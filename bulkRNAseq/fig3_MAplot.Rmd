@@ -1,0 +1,158 @@
+---
+title: Fig 3. MA plot comparing pLN TCF1hi vs. pLN TCF1lo,
+date: '`r format(Sys.Date(), "%Y-%B-%d")`'
+#runtime: shiny_prerendered
+output:
+  html_document:
+    code_folding: hide
+    theme: space
+    toc: yes
+    toc_depth: 3
+    toc_float: no
+  BiocStyle::html_document2:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+  knitrBootstrap::bootstrap_document:
+    highlight.chooser: yes
+    theme.chooser: yes
+  pdf_document:
+    toc: yes
+always_allow_html: yes
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(reshape2))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyr))
+suppressMessages(library(plyr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gtools))
+suppressMessages(library(pathview))
+suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
+suppressMessages(library(limma))
+suppressMessages(library(pheatmap))
+suppressMessages(library(gplots))
+suppressMessages(library(treemap))
+suppressMessages(library(scales))
+suppressMessages(library(Hmisc))
+suppressMessages(library(knitr))
+suppressMessages(library(annotate))
+suppressMessages(library(data.table))
+suppressMessages(library(ggrepel))
+getOutputFormat <- function() {
+  output <- rmarkdown:::parse_yaml_front_matter(
+    readLines(knitr::current_input())
+    )$output
+  if (is.list(output)){
+    return(names(output)[1])
+  } else {
+    return(output[1])
+  }
+}
+if(getOutputFormat() == 'pdf_document') {
+  knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE, echo=FALSE, results='hide', plots='all')
+}
+tol12qualitative=c("#9e9ac8", "#6a51a3", "#fdbe85", "#fd8d3c", "#d94701", "#74c476", "#41ab5d", "#238b45", "#005a32", "#bdd7e7", "#6baed6", "#2171b5")
+palette <- c("#d94701", "#6a51a3", "#2171b5", "#238b45")
+```
+
+
+
+```{r counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoderFile <- "decoder.txt"
+decoder.data <- read.table(decoderFile,header=T,stringsAsFactors=F,sep="\t")
+counts <- counts[,c(decoder.data$sample.ID)]
+table( colnames(counts) == decoder.data$sample.ID)
+decoder.data$condition <- factor(decoder.data$condition, levels=c("polyclonal_naive","pancreas_TCF1lo","pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+decoder.data$tcf1 <- factor(decoder.data$tcf1)
+decoder.data$cell_type <- factor(decoder.data$cell_type)
+decoder.data$diabetic <- factor(decoder.data$diabetic)
+decoder.data$sex <- factor(decoder.data$sex)
+decoder.data$num_mice <- factor(decoder.data$num_mice)
+decoder.data$age <- factor(decoder.data$age)
+decoder.data$cell_num <- factor(decoder.data$cell_num)
+```
+
+
+The following samples were part of this analysis:
+
+```{r samples, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node")
+decoder_df <- decoder.data.sub[,c(-2)]
+kable(decoder_df, row.names=FALSE,  padding = 0, longtable=TRUE) %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+Differential gene expression analysis was performed using *DESeq2* with default parameters (Wald test), contrasting pancreatic lymph node Tcf1$^{high}$ vs.  Tcf1$^{low}$.  A simple model was used (~ condition) with no prefiltering of gene list.
+
+```{r de_analysis_simple, message=FALSE, eval=TRUE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node")
+cnts <- counts[,decoder.data.sub$sample.ID]
+table(decoder.data.sub$sample.ID == colnames(cnts))
+conds <- factor(make.names(decoder.data.sub$condition),levels=c("pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+
+library(DESeq2)	
+deseq2.coldata <- data.frame(condition = conds, row.names = colnames(cnts), decoder.data.sub)
+deseq2.dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~ condition)
+deseq2.dds <- DESeq(deseq2.dds)
+
+deseq2.res0.10 <- results(deseq2.dds, contrast=c("condition","pancreas_LN_TCF1hi", "pancreas_LN_TCF1lo"), alpha=0.10)
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10 <- as.data.frame(subset(deseq2.res0.10 , padj < 0.10))
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10.all <- as.data.frame(deseq2.res0.10)
+
+```
+
+
+
+
+The following genes were detected as differentially expressed:
+
+
+```{r  dge_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE}
+df_deg <-
+  data.frame(
+  "padj < 0.10" = c(
+  nrow(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)),
+  check.names = F,
+  stringsAsFactors = F
+  )
+  row.names(df_deg) <- c("LN_TCF1hi_vs_LN_TCF1low (no outlier, no prefiltering)")
+kable(df_deg, row.names=T)  %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+MA plot of RNA-seq dataset. Significantly DEGs are coloured in red (up-regulated) and green (down-regulated). 
+
+Id3 is not DEG.
+
+```{r  maplot, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE, fig.height=7,fig.width=8, fig.align="center",fig.path='fig3a_figures/', dev=c('png','pdf')}
+genesForMA <- openxlsx:::read.xlsx("gene_list_for_ma.xlsx")
+genes_to_highlight <- c(genesForMA$genes, "Id3")
+res <- deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10.all
+res <- res[with(res, order(log2FoldChange)),]
+res <- res[which(!is.na(res$padj)),]
+res$threshold  <- FALSE
+res[res$padj < 0.10,]$threshold <- TRUE
+res$color <- FALSE
+res[res$padj < 0.10 & res$log2FoldChange > 0,]$color <- "red"
+res[res$padj < 0.10 & res$log2FoldChange < 0,]$color <- "blue"
+res$gene <- row.names(res)
+res$log2baseMean <- log2(res$baseMean)
+
+ggplot(data=res, aes(x=log2baseMean, y=log2FoldChange, colour=color, label=gene)) +
+    geom_point(alpha=0.6, size=1.5, show.legend = FALSE) +
+    geom_hline(aes(yintercept = 0), colour = "red", size = 0.45) +
+    ylim( c(-1, 1) * quantile(abs(res$log2FoldChange[is.finite(res$log2FoldChange)]), probs = 0.99) * 1.3) +
+    xlab("Mean expression") +
+    ylab("Fold change, log2(TCF1hi-TCF1low)")  +
+     theme_bw(base_size = 16) + theme(legend.position="bottom") +
+     scale_colour_manual(values = c( rgb(30, 73, 143, m=255), "gray80", rgb(98, 157, 212, m=255)))   + 
+     geom_text_repel(data=data.frame(subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == TRUE | threshold == FALSE)  ), size=8, segment.color="white", color="black", fontface=3) + geom_point(data=subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == TRUE |  threshold == FALSE), shape=1, size=3, color=ifelse(subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == TRUE | threshold == FALSE)$log2FoldChange > 0, "black", "black")) + geom_point(data=subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == TRUE),  size=1.5, color=ifelse(subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == TRUE)$log2FoldChange > 0, rgb(98, 157, 212, m=255), rgb(30, 73, 143, m=255))) + geom_point(data=subset(res[genes_to_highlight[genes_to_highlight %in% row.names(res)],], threshold == FALSE),  size=1.5, color="gray80") 
+```

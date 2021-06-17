@@ -1,0 +1,191 @@
+---
+title: Fig 3b. Heatmap of GOI
+date: '`r format(Sys.Date(), "%Y-%B-%d")`'
+#runtime: shiny_prerendered
+output:
+  html_document:
+    code_folding: hide
+    theme: space
+    toc: yes
+    toc_depth: 3
+    toc_float: no
+  BiocStyle::html_document2:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+  knitrBootstrap::bootstrap_document:
+    highlight.chooser: yes
+    theme.chooser: yes
+  pdf_document:
+    toc: yes
+always_allow_html: yes
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(reshape2))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyr))
+suppressMessages(library(plyr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gtools))
+suppressMessages(library(pathview))
+suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
+suppressMessages(library(limma))
+suppressMessages(library(pheatmap))
+suppressMessages(library(gplots))
+suppressMessages(library(treemap))
+suppressMessages(library(scales))
+suppressMessages(library(Hmisc))
+suppressMessages(library(knitr))
+suppressMessages(library(annotate))
+suppressMessages(library(data.table))
+suppressMessages(library(ggrepel))
+getOutputFormat <- function() {
+  output <- rmarkdown:::parse_yaml_front_matter(
+    readLines(knitr::current_input())
+    )$output
+  if (is.list(output)){
+    return(names(output)[1])
+  } else {
+    return(output[1])
+  }
+}
+if(getOutputFormat() == 'pdf_document') {
+  knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE, echo=FALSE, results='hide', plots='all')
+}
+tol12qualitative=c("#9e9ac8", "#6a51a3", "#fdbe85", "#fd8d3c", "#d94701", "#74c476", "#41ab5d", "#238b45", "#005a32", "#bdd7e7", "#6baed6", "#2171b5")
+palette <- c("#d94701", "#6a51a3", "#2171b5", "#238b45")
+```
+
+
+
+```{r counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+
+
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoderFile <- "decoder.txt"
+decoder.data <- read.table(decoderFile,header=T,stringsAsFactors=F,sep="\t")
+#table(colnames(counts) == decoder.data$sample.ID)
+counts <- counts[,c(decoder.data$sample.ID)]
+ table(colnames(counts) == decoder.data$sample.ID)
+decoder.data$condition <- factor(decoder.data$condition, levels=c("polyclonal_naive","pancreas_TCF1lo","pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+decoder.data$tcf1 <- factor(decoder.data$tcf1)
+decoder.data$cell_type <- factor(decoder.data$cell_type)
+decoder.data$diabetic <- factor(decoder.data$diabetic)
+decoder.data$sex <- factor(decoder.data$sex)
+decoder.data$num_mice <- factor(decoder.data$num_mice)
+decoder.data$age <- factor(decoder.data$age)
+decoder.data$cell_num <- factor(decoder.data$cell_num)
+
+
+
+```
+
+
+The following samples were part of this analysis:
+
+```{r samples, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node" ) # decoder.data
+
+decoder_df <- decoder.data.sub[,c(-2)]
+ kable(decoder_df, row.names=FALSE,  padding = 0, longtable=TRUE) %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+Differential gene expression analysis was performed using *DESeq2* with default parameters (Wald test), contrasting pancreatic lymph node Tcf1$^{high}$ vs.  Tcf1$^{low}$.  A simple model was used (~ condition) with no prefiltering of gene list.
+
+```{r de_analysis_simple, message=FALSE, eval=TRUE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node" & sample.ID != "LN14-LO") # decoder.data
+cnts <- counts[,decoder.data.sub$sample.ID]
+conds <- factor(make.names(decoder.data.sub$condition),levels=c("pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+
+library(DESeq2)	
+deseq2.coldata <- data.frame(condition = conds, row.names = colnames(cnts), decoder.data.sub)
+deseq2.dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~ condition)
+deseq2.dds <- DESeq(deseq2.dds)
+
+deseq2.res0.10 <- results(deseq2.dds, contrast=c("condition","pancreas_LN_TCF1hi", "pancreas_LN_TCF1lo"), alpha=0.10)
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10 <- as.data.frame(subset(deseq2.res0.10 , padj < 0.10))
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10.all <- as.data.frame(deseq2.res0.10)
+```
+
+
+
+
+
+
+The following genes were detected as differentially expressed:
+
+
+```{r  dge_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE}
+df_deg <-
+  data.frame(
+  "padj < 0.10" = c(
+  nrow(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)),
+  check.names = F,
+  stringsAsFactors = F
+  )
+  row.names(df_deg) <- c("LN_TCF1hi_vs_LN_TCF1low (no outlier, no prefiltering)")
+kable(df_deg, row.names=T)  %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+Heat map of RNA-seq expression (row-normalized log2(counts per million) for DEGs of interest.
+
+
+```{r heatmap,  message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE, fig.height=7,fig.width=8, fig.align="center", fig.path='fig3b_figures/', dev=c('png','pdf')}
+
+goi <-  openxlsx::read.xlsx("20200603_gene_list_ordered.xlsx", colNames=F)
+ 
+breaksList = seq(-1.5, 1.5, by = .1)
+
+#TFs
+selected_genes <- subset(goi, X1 == "TFs")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Transcription factors", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+#activation_exhaustion_markers
+selected_genes <- subset(goi, X1 == "activation_exhaustion_markers")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Activation/exhaustion markers", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+#chemokine_receptors
+selected_genes <- subset(goi, X1 == "chemokine_receptors")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Chemokine receptors", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+#signaling
+selected_genes <- subset(goi, X1 == "signaling")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Signaling", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+# self renewal
+selected_genes <- subset(goi, X1 == "self_renewal")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Self renewal", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+
+# cell cycle
+selected_genes <- subset(goi, X1 == "cell_cycle")$X2
+selected_genes %in% row.names(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)
+selected_genes_lbls <- selected_genes
+column_order <- sort(colnames(cnts))
+pheatmap(cpm(cnts, log=T)[selected_genes,column_order], scale="row", labels_row=selected_genes_lbls, cluster_rows = FALSE, cluster_cols = F, gaps_col = c(4), main="Cell cycle / proliferation", fontsize_row = 12, col =  bluered(length(breaksList)), cellwidth=30, cellheight=30, breaks = breaksList)
+
+```
+

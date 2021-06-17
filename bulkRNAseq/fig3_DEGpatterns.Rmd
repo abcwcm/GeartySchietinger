@@ -1,0 +1,188 @@
+---
+title: Fig 3e. Cluster analysis using polyclonal naïve, pLN TCF1hi, pLN TCF1lo, pancreas 
+date: '`r format(Sys.Date(), "%Y-%B-%d")`'
+output: html_document
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(QoRTs))
+suppressMessages(library(goseq))
+suppressMessages(library(reshape2))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyr))
+suppressMessages(library(plyr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gtools))
+suppressMessages(library(plotly))
+suppressMessages(library(ggpubr))
+suppressMessages(library(pathview))
+suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
+suppressMessages(library(limma))
+suppressMessages(library(openxlsx))
+suppressMessages(library(genefilter))
+suppressMessages(library(pheatmap))
+suppressMessages(library(gplots))
+suppressMessages(library(treemap))
+suppressMessages(library(scales))
+suppressMessages(library(Hmisc))
+suppressMessages(library(knitr))
+suppressMessages(library(annotate))
+suppressMessages(library(data.table))
+suppressMessages(library(ggrepel))
+getOutputFormat <- function() {
+  output <- rmarkdown:::parse_yaml_front_matter(
+    readLines(knitr::current_input())
+    )$output
+  if (is.list(output)){
+    return(names(output)[1])
+  } else {
+    return(output[1])
+  }
+}
+if(getOutputFormat() == 'pdf_document') {
+  knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE, echo=FALSE, results='hide', plots='all')
+}
+tol12qualitative=c("#9e9ac8", "#6a51a3", "#fdbe85", "#fd8d3c", "#d94701", "#74c476", "#41ab5d", "#238b45", "#005a32", "#bdd7e7", "#6baed6", "#2171b5")
+palette <- c("#d94701", "#6a51a3", "#2171b5", "#238b45")
+```
+
+
+```{r counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoderFile <- "decoder.txt"
+decoder.data <- read.table(decoderFile,header=T,stringsAsFactors=F,sep="\t")
+counts <- counts[,c(decoder.data$sample.ID)]
+#  colnames(counts) == decoder.data$sample.ID
+decoder.data$condition <- factor(decoder.data$condition)#, levels=c("polyclonal_naive","pancreas_TCF1lo","pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+decoder.data$tcf1 <- factor(decoder.data$tcf1)
+decoder.data$cell_type <- factor(decoder.data$cell_type)
+decoder.data$diabetic <- factor(decoder.data$diabetic)
+decoder.data$sex <- factor(decoder.data$sex)
+decoder.data$num_mice <- factor(decoder.data$num_mice)
+decoder.data$age <- factor(decoder.data$age)
+decoder.data$cell_num <- factor(decoder.data$cell_num)
+
+
+
+```
+
+
+
+
+
+Sofia would like a figure similiar to Fig. 3b from Schietinger et al. 2016. 
+listed methods for fig 3b: "For each pair-wise comparison (for significance testing and k- means clustering; using naïve as the reference), a probe was retained if all of the samples in at least one condition were not flagged by the intensity filter. We further filtered each pair-wise comparison through the application of a variance filter, using the “shorth” function from the Bioconductor package genefilter. Differential gene expression was determined using the Bioconductor package limma (Smyth, 2005), and a false discovery rate (FDR) method was used to correct for multiple testing (Reiner et al., 2003). Significant differential gene expression was defined as |log2 (ratio)| ≥ 0.585 (± 1.5-fold) and FDR ≤ 0.05. K-means cluster analysis was performed for those genes found to be differentially expressed in one or more comparison."      
+
+
+An alternative to pair-wise comparisons is to analyze all levels of a factor at once. By default, DESeq2 uses the Wald test to generate  results, but DESeq2 also offers a likelihood ratio test (LRT) which is used to identify any genes that show change in expression across any of the different groups. While the LRT is a test of significance for differences of any level of the factor, one should not expect it to be exactly equal to the union of sets of genes using Wald tests (although once can expect a majority overlap). (read more here https://hbctraining.github.io/DGE_workshop/lessons/08_DGE_LRT.html)
+
+
+The following samples were part of this analysis:
+
+```{r samples, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+decoder.data.sub <-decoder.data 
+
+
+decoder_df <- decoder.data.sub[,c(-2)]
+ kable(decoder_df, row.names=FALSE,  padding = 0, longtable=TRUE) %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+```{r deg_lrt,  message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=10, context="data"}
+
+decoder.data.sub <- decoder.data
+decoder.data.sub$group <- as.character(decoder.data.sub$condition)
+decoder.data.sub[grep("diabetic", decoder.data.sub$condition),]$group <- "pancreas"
+decoder.data.sub$group <- factor(decoder.data.sub$group )
+cnts <- counts[,decoder.data.sub$sample.ID]
+conds <- factor(make.names(decoder.data.sub$group)) 
+
+library(DESeq2)	
+deseq2.coldata <- data.frame(condition = conds, row.names = colnames(cnts), decoder.data.sub)
+deseq2.dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~ condition)
+deseq2.dds <- DESeq(deseq2.dds, test="LRT", reduced=~1)
+deseq2.vst <- vst(deseq2.dds)
+
+lrt.res <- results(deseq2.dds, alpha=0.01)
+lrt.res.sig.0.01 = as.data.frame(subset(lrt.res  , padj < 0.01))
+
+```
+
+
+We detected `r nrow(lrt.res.sig.0.01)` statistically significant differentially expressed genes (padj < 0.01) across all groups.
+
+
+Using the *degPatterns* tool, we can try to discern distinct patterns of expression. 
+
+```{r deg_patterns, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE, echo=FALSE, comment=FALSE, context="data", fig.align="center", fig.width=10, fig.height=10 }
+library(DESeq2)
+library(DEGreport)
+library(radiant.data)
+library(tibble)
+
+padj.cutoff = 0.01
+sig_res_LRT <- lrt.res.sig.0.01 %>%
+               data.frame() %>%
+               rownames_to_column(var="gene") %>%
+               as_tibble() %>%
+               filter(padj < padj.cutoff)
+
+# Get sig gene lists
+sigLRT_genes <- sig_res_LRT %>%
+                pull(gene)
+clustering_sig_genes <- sig_res_LRT %>%
+                  arrange(padj) %>%
+                  head(n=5500)
+rld_mat <- vst(deseq2.dds)
+rld_mat <- as.data.frame(assay(rld_mat))
+
+cluster_rlog <- rld_mat[clustering_sig_genes$gene, ]
+meta_df <-  as.data.frame(colData(deseq2.dds))
+meta_df$group <- factor(meta_df$group, levels=c("polyclonal_naive", "pancreas_LN_TCF1hi", "pancreas_LN_TCF1lo", "pancreas"))
+
+clusters <- degPatterns(as.matrix(cluster_rlog), metadata =meta_df, time="group", col=NULL, plot=FALSE, reduce=FALSE)
+```
+
+
+```{r checks,  message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE, echo=FALSE, comment=FALSE, context="data", fig.align="center", fig.width=10, fig.height=10 ,fig.align="center",fig.path='fig3e_figures/', dev=c('png','pdf')}
+subset(clusters$df, genes %in% c("Cxcr5", "Bcl6", "Traf1", "Cd40lg", "Hif1a", "Il2rb")) # group 1 in paper
+subset(clusters$df, genes %in% c("Fasn", "Id3", "Slamf6")) # grp2
+subset(clusters$df, genes %in% c("Cd38", "Eomes", "Ets1", "Irf2", "Itgal", "Notch1", "Ptpn22", "Stat1")) # grp3
+subset(clusters$df, genes %in% c("Cd244", "Cish", "Entpd1", "Gzmb", "Havcr2", "Id2", "Ifng", "Lag3", "Pdcd1", "Tigit")) # group 5 in paper
+subset(clusters$df, genes %in% c("Cd101", "Ctsd", "Cxcr3", "Cxcr6", "Fasl", "Gzmk", "Prdm1", "Xcr1")) # group 4 in paper
+subset(clusters$df, genes %in% c("Bach2", "Ccr7", "Cxcr4", "Klf2", "Foxo1", "Lef1", "Satb1", "Sell", "Tcf7")) # group 6 in paper
+
+
+```
+
+
+
+
+
+```{r deg_patterns_plot, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE, echo=FALSE, comment=FALSE, context="data", fig.align="center", fig.width=10, fig.height=10 ,fig.align="center",fig.path='fig3e_figures/', dev=c('png','pdf')}
+# https://github.com/lpantano/DEGreport/blob/master/R/clustering.R
+degPlot = clusters$normalized #subset(clusters$normalized, cluster == 5)
+degPlot = merge(degPlot, clusters$summarise, by = "cluster")
+degPlot[grep("polyclonal_naive", degPlot$condition),]$condition <- "naive"
+degPlot[grep("pancreas_LN_TCF1lo", degPlot$condition),]$condition <- "LN_TCF1lo"
+degPlot[grep("pancreas_LN_TCF1hi", degPlot$condition),]$condition <- "LN_TCF1hi"
+degPlot[grep("pancreas", degPlot$condition),]$condition <- "pancreas_TCF1lo"
+
+degPlot$condition <-factor(degPlot$condition, levels=c("naive", "LN_TCF1hi", "LN_TCF1lo", "pancreas_TCF1lo"))
+degPlot$title <- paste("Group: ",degPlot$cluster,"- genes:" ,degPlot$n_genes)
+degPlot$title <- factor(degPlot$title, levels=mixedsort(levels(factor(degPlot$title))))
+splan <- length(unique(degPlot[["group.x"]])) - 1L
+ ggplot(degPlot, aes(condition, value, color = condition)) +
+  geom_boxplot(alpha = 0.7,outlier.size = 0, outlier.shape = NA) +
+   geom_point(position = position_jitterdodge(dodge.width = 0.9), alpha = 0.4, size = 1) +
+   geom_smooth(aes(group=colored.x), method = "lm", formula = y~poly(x, splan), se=FALSE) + theme_classic() +  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position="none") +  facet_wrap(~title, ncol=3)    +    ylab("Z-score of gene abundance") +   xlab("") + scale_colour_manual(values = c("gray", rgb(98, 157, 212, m=255),  rgb(30, 73, 143, m=255),  rgb(215, 32, 39, m=255)))
+```
+   
+   
+
+

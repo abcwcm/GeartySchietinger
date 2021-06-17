@@ -1,0 +1,127 @@
+---
+title: Fig 3. PCA plot comparing pLN TCF1hi, pLN TCF1lo, pancreas TCF1lo
+date: '`r format(Sys.Date(), "%Y-%B-%d")`'
+#runtime: shiny_prerendered
+output:
+  html_document:
+    code_folding: hide
+    theme: space
+    toc: yes
+    toc_depth: 3
+    toc_float: no
+  BiocStyle::html_document2:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+  knitrBootstrap::bootstrap_document:
+    highlight.chooser: yes
+    theme.chooser: yes
+  pdf_document:
+    toc: yes
+always_allow_html: yes
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(reshape2))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyr))
+suppressMessages(library(plyr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gtools))
+suppressMessages(library(pathview))
+suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
+suppressMessages(library(limma))
+suppressMessages(library(pheatmap))
+suppressMessages(library(gplots))
+suppressMessages(library(treemap))
+suppressMessages(library(scales))
+suppressMessages(library(Hmisc))
+suppressMessages(library(knitr))
+suppressMessages(library(annotate))
+suppressMessages(library(data.table))
+suppressMessages(library(ggrepel))
+getOutputFormat <- function() {
+  output <- rmarkdown:::parse_yaml_front_matter(
+    readLines(knitr::current_input())
+    )$output
+  if (is.list(output)){
+    return(names(output)[1])
+  } else {
+    return(output[1])
+  }
+}
+if(getOutputFormat() == 'pdf_document') {
+  knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE, echo=FALSE, results='hide', plots='all')
+}
+tol12qualitative=c("#9e9ac8", "#6a51a3", "#fdbe85", "#fd8d3c", "#d94701", "#74c476", "#41ab5d", "#238b45", "#005a32", "#bdd7e7", "#6baed6", "#2171b5")
+palette <- c("#d94701", "#6a51a3", "#2171b5", "#238b45")
+```
+
+
+
+```{r counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+
+
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoderFile <- "decoder.txt"
+decoder.data <- read.table(decoderFile,header=T,stringsAsFactors=F,sep="\t")
+counts <- counts[,c(decoder.data$sample.ID)]
+#  colnames(counts) == decoder.data$sample.ID
+decoder.data$condition <- factor(decoder.data$condition)#, levels=c("polyclonal_naive","pancreas_TCF1lo","pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+decoder.data$tcf1 <- factor(decoder.data$tcf1)
+decoder.data$cell_type <- factor(decoder.data$cell_type)
+decoder.data$diabetic <- factor(decoder.data$diabetic)
+decoder.data$sex <- factor(decoder.data$sex)
+decoder.data$num_mice <- factor(decoder.data$num_mice)
+decoder.data$age <- factor(decoder.data$age)
+decoder.data$cell_num <- factor(decoder.data$cell_num)
+
+
+```
+
+
+The following samples were part of this analysis:
+
+```{r samples, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+decoder.data.sub <- subset(decoder.data, cell_type != "polyclonal_naive")
+decoder_df <- decoder.data.sub[,c(-2)]
+kable(decoder_df, row.names=FALSE,  padding = 0, longtable=TRUE) %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+
+
+
+
+
+
+Below is a PCA plot of all of the samples (minus naive) colored by condition:
+
+```{r pca_nonaive, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=5.5, context="data", eval=T, fig.align="center",fig.path='fig3d_figures/', dev=c('png','pdf')}
+decoder.data.sub <- subset(decoder.data, cell_type != "polyclonal_naive")
+counts.sub <- counts[,decoder.data.sub$sample.ID]
+deseq2.coldata <- data.frame(decoder.data.sub, row.names = colnames(counts.sub), stringsAsFactors=F)
+deseq2.coldata$group <- as.character(decoder.data.sub$condition)
+deseq2.coldata$group <- c(rep("LN_TCF1lo", 3), rep("LN_TCF1hi", 4), rep("pancreas", 6))
+deseq2.coldata$group <- factor(deseq2.coldata$group)
+
+deseq2.cds <- DESeq2::DESeqDataSetFromMatrix(countData = counts.sub,colData = deseq2.coldata, design = ~group)
+deseq2.cds <- estimateSizeFactors(deseq2.cds)
+deseq2.rld <- DESeq2::vst(deseq2.cds, blind=TRUE)
+
+ntop = 500
+Pvars <- rowVars(assay(deseq2.rld))
+select <- order(Pvars, decreasing = TRUE)[seq_len(min(ntop, length(Pvars)))]
+PCA <- prcomp(t(assay(deseq2.rld)[select, ]), scale = F)
+percentVar <- round(100*PCA$sdev^2/sum(PCA$sdev^2),1)
+dataGG = data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2], sampleName = row.names(colData(deseq2.rld)),colData(deseq2.rld))
+
+ggpubr::ggscatter(dataGG, "PC1", "PC2", color="group",  palette = "jco",  size=5, xlab=paste0("PC1: ",percentVar[1],"% variance"), ylab=paste0("PC2: ",percentVar[2],"% variance")) + scale_colour_manual(values = c(rgb(98, 157, 212, m=255),  rgb(30, 73, 143, m=255), rgb(215, 32, 39, m=255)))
+
+```
+
+

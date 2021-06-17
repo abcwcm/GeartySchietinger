@@ -1,0 +1,187 @@
+---
+title: Fig 3a. GO analyis
+date: '`r format(Sys.Date(), "%Y-%B-%d")`'
+#runtime: shiny_prerendered
+output:
+  html_document:
+    code_folding: hide
+    theme: space
+    toc: yes
+    toc_depth: 3
+    toc_float: no
+  BiocStyle::html_document2:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+  knitrBootstrap::bootstrap_document:
+    highlight.chooser: yes
+    theme.chooser: yes
+  pdf_document:
+    toc: yes
+always_allow_html: yes
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(reshape2))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyr))
+suppressMessages(library(plyr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gtools))
+suppressMessages(library(pathview))
+suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
+suppressMessages(library(limma))
+suppressMessages(library(pheatmap))
+suppressMessages(library(gplots))
+suppressMessages(library(treemap))
+suppressMessages(library(scales))
+suppressMessages(library(Hmisc))
+suppressMessages(library(knitr))
+suppressMessages(library(annotate))
+suppressMessages(library(data.table))
+suppressMessages(library(ggrepel))
+getOutputFormat <- function() {
+  output <- rmarkdown:::parse_yaml_front_matter(
+    readLines(knitr::current_input())
+    )$output
+  if (is.list(output)){
+    return(names(output)[1])
+  } else {
+    return(output[1])
+  }
+}
+if(getOutputFormat() == 'pdf_document') {
+  knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE, echo=FALSE, results='hide', plots='all')
+}
+tol12qualitative=c("#9e9ac8", "#6a51a3", "#fdbe85", "#fd8d3c", "#d94701", "#74c476", "#41ab5d", "#238b45", "#005a32", "#bdd7e7", "#6baed6", "#2171b5")
+palette <- c("#d94701", "#6a51a3", "#2171b5", "#238b45")
+```
+
+
+
+```{r counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+
+
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoderFile <- "decoder.txt"
+decoder.data <- read.table(decoderFile,header=T,stringsAsFactors=F,sep="\t")
+#table(colnames(counts) == decoder.data$sample.ID)
+counts <- counts[,c(decoder.data$sample.ID)]
+#  colnames(counts) == decoder.data$sample.ID
+decoder.data$condition <- factor(decoder.data$condition, levels=c("polyclonal_naive","pancreas_TCF1lo","pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+decoder.data$tcf1 <- factor(decoder.data$tcf1)
+decoder.data$cell_type <- factor(decoder.data$cell_type)
+decoder.data$diabetic <- factor(decoder.data$diabetic)
+decoder.data$sex <- factor(decoder.data$sex)
+decoder.data$num_mice <- factor(decoder.data$num_mice)
+decoder.data$age <- factor(decoder.data$age)
+decoder.data$cell_num <- factor(decoder.data$cell_num)
+
+
+
+```
+
+
+The following samples were part of this analysis:
+
+```{r samples, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node" ) # decoder.data
+
+decoder_df <- decoder.data.sub[,c(-2)]
+ kable(decoder_df, row.names=FALSE,  padding = 0, longtable=TRUE) %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+Differential gene expression analysis was performed using *DESeq2* with default parameters (Wald test), contrasting pancreatic lymph node Tcf1$^{high}$ vs.  Tcf1$^{low}$.  A simple model was used (~ condition) with no prefiltering of gene list.
+
+```{r de_analysis_simple, message=FALSE, eval=TRUE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node") # decoder.data
+cnts <- counts[,decoder.data.sub$sample.ID]
+conds <- factor(make.names(decoder.data.sub$condition),levels=c("pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
+
+library(DESeq2)	
+deseq2.coldata <- data.frame(condition = conds, row.names = colnames(cnts), decoder.data.sub)
+deseq2.dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~ condition)
+deseq2.dds <- DESeq(deseq2.dds)
+
+deseq2.res0.10 <- results(deseq2.dds, contrast=c("condition","pancreas_LN_TCF1hi", "pancreas_LN_TCF1lo"), alpha=0.10)
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10 <- as.data.frame(subset(deseq2.res0.10 , padj < 0.10))
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10.all <- as.data.frame(deseq2.res0.10)
+
+resLFC <- lfcShrink(deseq2.dds, coef="condition_pancreas_LN_TCF1hi_vs_pancreas_LN_TCF1lo", type="apeglm")
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10_shrunk <- as.data.frame(subset(resLFC , padj < 0.10))
+deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10_shrunk_all <-  as.data.frame(resLFC)
+
+```
+
+
+
+
+
+
+The following genes were detected as differentially expressed:
+
+
+```{r  dge_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE}
+df_deg <-
+  data.frame(
+  "padj < 0.10" = c(
+  nrow(deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10)),
+  check.names = F,
+  stringsAsFactors = F
+  )
+  row.names(df_deg) <- c("LN_TCF1hi_vs_LN_TCF1low (no outlier, no prefiltering)")
+kable(df_deg, row.names=T)  %>%  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+
+
+
+
+```{r clusterProfiler_go, message=FALSE, eval=TRUE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,   fig.width=10, fig.height=12, fig.align='center'}
+
+
+
+library(clusterProfiler)
+deg = deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10_shrunk_all
+## get entrez IDs
+eg <- clusterProfiler::bitr(row.names(deg), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Mm.eg.db") %>% as.data.table
+setnames(eg, names(eg), c("gene_symbol", "entrez"))
+
+
+## get data.table for more ease 
+deg.dt <- as.data.table(deg, keep.rownames = TRUE)
+setnames(deg.dt, "rn", "gene_symbol")
+
+## define the two groups: up / down (sign. changing)
+deg.dt[, direction:= ifelse(log2FoldChange > 0 & padj <= 0.10, "up",
+                            ifelse(log2FoldChange < 0 & padj <= 0.10, "down", "n.s"))]
+
+## add entrez IDs to DE results
+deg.dt <- deg.dt[eg, on = "gene_symbol"]
+
+## for coloring later on
+logFCs <- tibble::deframe(data.frame(gene = rownames(deg), logFC = deg$log2FoldChange))
+logFCs_entrez <- tibble::deframe(data.frame(gene = deg.dt$entrez, logFC = deg.dt$log2FoldChange))
+
+
+## for clusterCompare
+clstcomp.list <- lapply(c("up","down"), function(x) deg.dt[direction == x]$entrez )
+#names(clstcomp.list) <- c("Over-represented in diabetic","Over-represented in non-diabetic")
+names(clstcomp.list) <- c("up","down")
+
+
+cp.GO_bp <- compareCluster(clstcomp.list, fun = "enrichGO", OrgDb = org.Mm.eg.db, universe = unique(deg.dt$entrez), ont = "BP", pvalueCutoff = 0.05, pAdjustMethod = "BH", readable =TRUE)
+
+cp.GO_bp_old <- as.data.frame(cp.GO_bp)
+
+subset(cp.GO_bp_old, ID %in% c("GO:0098813", "GO:0140014","GO:0000819", "GO:0002250", "GO:0006260", "GO:0044770"))
+subset(cp.GO_bp_old, ID %in% c("GO:0050863", "GO:0001819", "GO:0030098", "GO:0022407", "GO:0042110"))
+
+```
