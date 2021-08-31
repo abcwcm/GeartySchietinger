@@ -1,0 +1,539 @@
+---
+title: "CITE-seq based plots for Gearty et al. (2021)"
+author: "Friederike Dündar | Weill Cornell Medicine"
+date: "2021"
+output:
+    pdf_document:
+        toc: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r message=FALSE, cache=FALSE}
+library(SingleCellExperiment)
+library(magrittr); library(data.table)
+library(ggplot2); theme_set(theme_bw(base_size = 14))
+library(patchwork)
+source("src/utils_SCE.R")
+source("src/load_data_from_box.R")
+library(scABC2) # scABC2_0.3.3
+library(clusterProfiler)
+```
+
+These plots are based on scRNA-seq/CITE-seq data obtained from sorted CD8+ T cells from pancreatic lymph nodes (pLN).
+The data was obtained from three technical replicates (`Sample`): "pLN_1", "pLN_3", "pLN_4" that correspond to three different library prep and sequencing runs.
+Each of the experiments had CD8 T cells from multiple mice, whose identity was derived via antibody-based sample tagging and can be found in the `SingleCellExperiment`'s `colData` (meta data) via the `Mouse` entry.
+CD44, CD62L etc. correspond to the normalized CITE-seq values for the respective antibodies
+
+The SingleCellExperiment object and all other Robjects needed to recreate this document are stored in the Box; the [BiocFileCache package](https://bioconductor.org/packages/release/bioc/html/BiocFileCache.html) must be installed to make use of that.
+
+```{r load_SCE, echo=TRUE, message=TRUE}
+fls <- fread("data/data_links.txt", header=TRUE)
+sln <- load_RDSdata_from_Box(shared_link = fls[object == "SCE"]$link)
+sln
+```
+```{r define_colors}
+## define color scheme
+popcols <- c("#1E498F", "#629DD4","#5E3DD8") # dark blue, light blue, intermediate blue
+names(popcols) <- c("AIC","transition","AMC")
+
+## expression gradient colors
+grad_cols <- c("grey85","yellow","orange","firebrick4")
+express_cols <-  c("grey85","tan1","tomato1","tomato2","firebrick3","firebrick4")
+
+## helper function
+cf <- function(cluster_as_character){
+    factor(cluster_as_character, levels = c("AIC","transition","AMC"), ordered = TRUE)
+}
+```
+
+>Note: In the final manuscript, 'AIC' where called 'AP' cells, 'transition cells' are 'intermediate cells' and 'AMC' are 'AM'.
+
+## Mimicking FACS plots
+
+
+```{r facs_imitation}
+com <- make_long_dt(sln, features = "Tcf7",
+    include_metaData = c("Tissue","Mouse","CD39","CD62L","population"), 
+    exprs_values="logcounts")
+
+ggplot(com, aes(x = CD39, y = CD62L, color = cf(population))) + 
+    geom_point(shape = 1, size = 2.5, alpha = .5, stroke=1) +
+    scale_color_manual(values = popcols) +
+    facet_grid(~Tissue) + ggtitle("ADT: CD62L vs. CD39") +
+    guides(colour = guide_legend(override.aes = list(alpha = 1, size = 4, shape = 15))) +
+    theme(panel.grid = element_blank())
+```
+
+## Cells per cluster per mouse
+
+```{r cells_per_cluster, fig.width = 14, fig.height = 10, cache=FALSE}
+p1 <- colData(sln)[, c("Tissue","Mouse","population","cell")] %>% as.data.table %>% 
+    ggplot(., aes(x = Tissue ,fill = cf(population))) + geom_bar(position = "fill") +
+    scale_fill_manual(values = popcols,name = "pLN population") +
+    theme(legend.position = "none", panel.grid = element_blank())
+    
+p2 <-  colData(sln)[, c("Tissue","Mouse","population","cell")] %>% as.data.table %>% 
+    ggplot(., aes(x = Mouse, fill = cf(population))) + 
+    geom_bar() + coord_flip() + 
+    scale_fill_manual(values = popcols, name = "pLN population") + 
+    theme(panel.grid = element_blank(), legend.position = "bottom")+
+    ggtitle("Cells per cluster")
+
+p3 <-  colData(sln)[, c("Tissue","Mouse","population","cell")] %>% as.data.table %>% 
+    ggplot(., aes(x = Mouse, fill = cf(population))) + 
+    geom_bar(position = "fill") + coord_flip() + ylab("fraction") +
+    scale_fill_manual(values = popcols, name = "pLN population") + 
+    theme(panel.grid = element_blank(),legend.position = "bottom")
+
+p1 + p2 + p3 + plot_layout(widths = c(1,4,4))
+```
+
+
+### Diffusion map + trajectory
+
+```{r}
+## loads an object named line.data that contains the results of the TSCAN
+## run to determin pseudotimes and trajectories
+load_data_from_Box(fls[object == "tscan"]$link, load_rds = FALSE)
+```
+
+```{r diffMap_trajectory,fig.width = 9, cache=FALSE}
+plot_reducedDim_from_sce(sln, color_by = "population",
+     which_reddim = "diffusionMap", 
+     size_by = 2.5, alpha=.2, set_color=FALSE, 
+     remove_rug=TRUE)  +  scale_color_manual(values=popcols) + 
+    xlab("DC1") + ylab("DC2") +
+    geom_line(data=line.data, mapping=aes(x=DC1, y=DC2, group=edge), inherit.aes = FALSE, lwd=1.5) +
+    ggtitle("Diffusion map with TSCAN-predicted trajectory")
+```
+
+### Gene expression in diffusion map
+
+```{r genes_of_interest_in_diffMap, fig.width = 12, fig.height = 15, cache=FALSE}
+p1 <- plot_reducedDim_from_sce(sln, color_by = "CD62L",
+     which_reddim = "diffusionMap", 
+     size_by = 1, alpha=.2, set_color=FALSE, remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = grad_cols) + 
+  #  theme(legend.position = "none") + 
+    ggtitle("CD62L (ADT)") +
+    xlab("DC1") + ylab("DC2")
+p2 <- plot_reducedDim_from_sce(sln, color_by = "Sell",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = express_cols) + 
+     ggtitle("Sell (expression)") +
+   # theme(legend.position = "none") + 
+    xlab("DC1") + ylab("DC2")
+
+p5 <- plot_reducedDim_from_sce(sln, color_by = "CD39",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, 
+     remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = grad_cols) + 
+     ggtitle("CD39 (ADT)") +
+    #theme(legend.position = "none") + 
+    xlab("UMAP1") + ylab("UMAP2")
+p6 <- plot_reducedDim_from_sce(sln, color_by = "Entpd1",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, 
+     remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = express_cols) + 
+     ggtitle("Entpd1 (expression)") +
+    #theme(legend.position = "none") + 
+    xlab("DC1") + ylab("DC2") 
+
+p7 <- plot_reducedDim_from_sce(sln, color_by = "PD-1",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, 
+     remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = grad_cols) +
+    ggtitle("PD-1 (ADT)") +
+    #theme(legend.position = "none") + 
+    xlab("DC1") + ylab("DC2") 
+p8 <- plot_reducedDim_from_sce(sln, color_by = "Pdcd1",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, 
+     add_cell_info = "Tissue", remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = express_cols) +
+     ggtitle("Pdcd1 expression") +
+    #theme(legend.position = "none") + 
+   xlab("DC1") + ylab("DC2")
+
+p4 <- plot_reducedDim_from_sce(sln, color_by = "Tcf7",
+     which_reddim = "diffusionMap", exprs_values = "logcounts",
+     size_by = 1, alpha=.2, set_color=FALSE, 
+     remove_rug=TRUE)  +  
+    scale_color_gradientn(colors = express_cols) + 
+     ggtitle("Tcf7 (expression)") +
+    #theme(legend.position = "none") + 
+   xlab("DC1") + ylab("DC2")
+
+(p1 + p2) / (p5 + p6) / (p7 + p8) / (p4 + p4)
+```
+
+
+### Genes' expression plotted along pseudotime
+
+```{r expression_along_pseudotime, message=FALSE, fig.width = 7, fig.height = 3}
+for(GN in c("Tcf7","Sell","Entpd1","Pdcd1","Lef1")){
+    tt <- scABC2::make_long_dt(sln, features = GN,
+        exprs_values = "logcounts",
+        include_metaData = c("Mouse","population","TSCANAMC"))
+ P <- ggplot(tt, aes(x = TSCANAMC, y = logcounts)) +
+     #ggbeeswarm::geom_quasirandom(size=.5, alpha=.2,shape=1, groupOnX = FALSE, aes(color = population)) + scale_color_manual(values = cc) +
+     geom_smooth(method="auto",se=TRUE, fullrange=FALSE, level=0.95, color = "black") +
+     ggtitle(GN, subtitle = "Cells sorted acc. to pseudotime") +
+     facet_grid(feature_name ~ ., scales = "free_y") +
+     theme(legend.position = "none", panel.grid = element_blank()) +
+     xlab("pseudotime")
+ print(P)
+}
+```
+
+
+## Marker genes between clusters
+
+### Markers for both directions
+
+```{r marker_gene_detection, message=FALSE, cache=FALSE}
+clust.markers <- scran::findMarkers(sln,
+    block=sln$Sample, group = sln$population)
+
+mks <- scABC2::extract_markers(sln, 
+    marker_search_result = clust.markers, FDR_thresh = 0.05,
+    rank_thresh = 50, comp_name = "k40_allSampls_")
+mks <- mks[!grepl("Rp[sl]", gene_symbol)]
+```
+
+```{r eval=FALSE}
+clust.markers.df <- lapply(clust.markers, as.data.frame)
+##openxlsx::write.xlsx(clust.markers.df, file = "~/Documents/Projects/2019-03_Sofia_SchietingerLab/CITEseq/data/NNEDS TO BE DETERMINED",rowNames = TRUE)
+```
+
+```{r mks_genes_hm, fig.height = 18, cache=FALSE}
+sln$pseudotime <- sln$TSCANAMC
+plot_marker_heatmap(sln, gns=mks$gene_symbol, 
+    exprs_values = "logcounts",
+    #cells = head(colnames(sln)),
+   scale="row", n_quant_breaks = 300, col_palette = c("mediumorchid","black","yellow"),
+    fontsize_row = 8,
+    sort_cells_by = "pseudotime",
+       add_cell_annotation = data.frame(
+        row.names = colnames(sln),
+        pseudotime = sln$pseudotime,
+        population = sln$population,
+        CD62L = sln$CD62L, CD127 = sln$CD127,
+        CD38=sln$CD38, CD39 = sln$CD39, PD1 = sln$`PD-1`,
+     #   CD73=sln$CD73,
+        CD44 = sln$CD44),
+     define_anno_cols = list(
+        population = popcols,
+        CD62L = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD127 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD38 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD39 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        PD1 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+     #   CD73 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD44 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        pseudotime = scales::viridis_pal()(5)
+        )
+    )
+```
+
+
+### Markers that go up in the respective cluster
+
+We can focus the marker detection to those that go up in an individual cluster.
+
+```{r marker_gene_detection_up, message=FALSE, cache=FALSE}
+clust.markers.up <- scran::findMarkers(sln,direction="up",
+    block=sln$Sample, group = sln$population,)
+
+mks.up <- scABC2::extract_markers(sln, 
+    marker_search_result = clust.markers.up, FDR_thresh = 0.05,
+    rank_thresh = 50, comp_name = "k40_allSampls_up_")
+mks.up <- mks.up[!grepl("Rp[sl]", gene_symbol)]
+```
+
+```{r eval=FALSE}
+clust.markers.up.df <- lapply(clust.markers.up, as.data.frame)
+openxlsx::write.xlsx(clust.markers.up.df, file = "~/Documents/Projects/2019-03_Sofia_SchietingerLab/CITEseq/data/cluster_genes_UP_panc-and-pLN_2021-04-12.xlsx",rowNames = TRUE)
+```
+
+```{r results='asis',eval=FALSE}
+mks.up[classify == "unique"] %>% ABCutilities::my_table(.)
+```
+```{r mksUp_genes_hm, fig.height = 24, cache=FALSE}
+plot_marker_heatmap(sln, gns=mks.up$gene_symbol, 
+    exprs_values = "logcounts",
+    #cells = head(colnames(sln)),
+   scale="row", n_quant_breaks = 300, col_palette = c("mediumorchid","black","yellow"),
+    fontsize_row = 8,
+    sort_cells_by = "TSCANAMC",
+       add_cell_annotation = data.frame(
+        row.names = colnames(sln),
+           pseudotime = sln$TSCANAMC,
+        cluster = sln$population,
+        CD62L = sln$CD62L,         CD127 = sln$CD127,
+        CD38=sln$CD38, CD39 = sln$CD39, PD1 = sln$`PD-1`,
+      #  CD73=sln$CD73,
+        CD44 = sln$CD44),
+     define_anno_cols = list(
+        cluster = popcols,
+        CD62L = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD127 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD38 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD39 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        PD1 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+     #   CD73 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD44 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        ps1 = scales::viridis_pal()(5), ps2 = scales::viridis_pal()(5)
+        ),
+    main = "Marker genes of the three populations\n(FDR 5%, Rank <= 50)"
+    )
+```
+
+
+```{r hm_cytokines, fig.height = 8, echo=FALSE, eval=FALSE}
+# Cytokines, chemokines etc
+cytokines <- c("Ccr2","Cxcr3","Cxcr4","Cx3cr1","S1pr1","Itga1","Itga4","Itgae","Itgb1",'Itgb7','Cd44','Cd69',"Cxcr5","Sell","Klf2", "Il18r1","Ifngr1")
+
+plot_marker_heatmap(sln, gns=cytokines, 
+    exprs_values = "logcounts",
+    fontsize_row = 12, 
+    #col_palette = c("ivory",express_cols[-1]),
+    scale="row", n_quant_breaks = 600, 
+    col_palette = c("mediumorchid","black","yellow"),
+    sort_cells_by = "TSCANAMC",
+       add_cell_annotation = data.frame(
+        row.names = colnames(sln),
+        pseudotime = sln$TSCANAMC,
+        cluster = sln$population,
+         CD62L = sln$CD62L,         CD127 = sln$CD127,
+        CD38=sln$CD38, CD39 = sln$CD39, PD1 = sln$`PD-1`,CD44 = sln$CD44),
+     define_anno_cols = list(
+        cluster = popcols,
+        CD62L = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD127 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD38 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD39 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        PD1 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+     #   CD73 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD44 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        pseudotime = scales::viridis_pal()(5)
+        ),
+     main = "Selected signaling molecules"
+    )
+```
+
+# Sofia's selected genes of interest
+
+```{r }
+goiDF <- read.table(file="data/fig5_genes_heatmap.csv", sep = ",", header = TRUE)
+
+plot_marker_heatmap(sln,
+    gns=goiDF$genes.for.5b.heatmap, 
+    exprs_values = "logcounts",
+    scale="row",
+    col_palette = c(rep("mediumorchid1",7),"mediumorchid3","mediumorchid4","black","yellow3","yellow2",rep("yellow1",7)),
+    fontsize_row = 8,
+    sort_cells_by = "TSCANAMC",
+    add_cell_annotation = data.frame(
+        row.names = colnames(sln),
+        pseudotime = sln$TSCANAMC,
+        cluster = sln$population,
+        CD62L = sln$CD62L, CD127 = sln$CD127,
+        CD38=sln$CD38, CD39 = sln$CD39, PD1 = sln$`PD-1`,
+        CD44 = sln$CD44),
+     define_anno_cols = list(
+        cluster = popcols,
+        CD62L = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD127 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD38 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD39 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        PD1 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        CD44 = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        ps1 = scales::viridis_pal()(5), ps2 = scales::viridis_pal()(5)
+        ),
+    main = "Selected marker genes"
+    )
+```
+
+
+# GO term enrichments
+
+Ignoring ribosomal genes.
+
+```{r message=FALSE, warning=FALSE}
+## get markers
+cm.up <- scran::findMarkers(sln,
+    block=sln$Sample, group = sln$population, direction = "up")
+mks.up <- scABC2::extract_markers(sln, 
+    marker_search_result = cm.up, FDR_thresh = 0.05,
+    rank_thresh = 50)
+mks.up <- mks.up[ !grepl("^Rp[ls]", gene_symbol)] # removing ribosomal genes
+
+## get ENTREZ IDs
+eg <-  clusterProfiler::bitr(
+    unique(mks.up$gene_symbol), 
+    fromType="SYMBOL", toType="ENTREZID",
+    OrgDb="org.Mm.eg.db") %>%  as.data.table
+setnames(eg, names(eg), c("gene_symbol", "entrez"))
+eg <- mks.up[eg, on = "gene_symbol"]
+
+## generate list of ENTREZ IDs of interest
+clstcomp.list <- lapply(cm.up, function(x){
+    eg[ gene_symbol %in% rownames(subset(x, FDR <= 0.05))]$entrez}
+    )
+
+## universes
+all.entrez <-  clusterProfiler::bitr(rownames(sln), 
+    fromType="SYMBOL", toType="ENTREZID",
+    OrgDb="org.Mm.eg.db") %>%  as.data.table
+all.entrez_noRibo <- all.entrez[!grepl("^Rp[ls]", SYMBOL)]
+
+## for visualization purposes
+logFClist <- lapply(cm.up, function(x){
+    out <- x[, "summary.logFC"]
+    names(out) <- row.names(x)
+    return(out)
+})
+```
+
+```{r}
+load_data_from_Box(fls[object == "clstProfiler_BP"]$link, load_rds = FALSE) # loads 3 objects of cluster profiler results, one for each population (AIC/AMC/Transition)
+load_data_from_Box(fls[object == "clstProfiler_MF"]$link, load_rds = FALSE)
+```
+
+
+## GO terms (BP) {.tabset}
+
+Here, we first directly compare the GO term enrichments for the different clusters.
+Each tab then contains the results of the individual analyses, i.e. one per cell population (AIC, transition, AMC).
+
+If a tab does not contain an extra plot, no enrichments were found for that cell population.
+
+### Comparison
+
+```{r gobp_cluster_comparison, fig.width = 7, message=FALSE, warning=FALSE}
+dotplot(cc.gobp) + ggtitle("Overrepresented GO BP terms") + 
+     scale_color_gradientn(colours = rev(c("azure2", "darkseagreen1",
+         "seagreen2","seagreen3")),  limits = c(0, 0.05))
+```
+
+- geneRatio should be number of genes that overlap gene set divided by size of gene set
+
+### AIC
+
+```{r gobp_aic_cnetplot, fig.height = 12, fig.width = 15}
+P <- try(cnetplot(gobp_aic, showCategory = 8,
+    foldChange = logFClist$AIC, 
+    colorEdge = TRUE), TRUE) 
+if(length(P) > 1){ 
+    P + ggtitle("GO BP PWs (AIC)")
+}
+```
+
+
+### Transition
+
+```{r gobp_transition_cnet, fig.width = 15, fig.height = 10}
+#gobp_trans <- enrichGO(gene = clstcomp.list$transition, OrgDb = org.Mm.eg.db,
+#    ont = "BP", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez_noRibo$ENTREZID)
+P <- try(cnetplot(gobp_trans, showCategory = 8,
+    foldChange = logFClist$transition,
+    colorEdge = TRUE), TRUE)  
+if(length(P) > 1){ P + ggtitle("GO BP PWs (Transition population)") +  
+        scale_color_gradientn(colours =c("lightsalmon", "tomato", "firebrick4"))}
+```
+
+* grey bubbles = name of the gene set at hand (e.g. "translational elongation"
+    - size = number of marker genes that are part of the gene set
+* edges = colored by gene set
+* nodes belonging to each gene set represent individual genes (e.g. Rack1)
+    - their color represents the logFC of that gene in the respective cluster compared to the expression of the gene in all other clusters
+
+
+### AMC
+
+```{r gobp_amc_cnet, fig.width = 16, fig.height = 12}
+#gobp_amc <- enrichGO(gene = clstcomp.list$AMC,OrgDb = org.Mm.eg.db,
+#    ont = "BP", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez_noRibo$ENTREZID)
+
+P <- try(cnetplot(gobp_amc, showCategory = 8, foldChange = logFClist$AMC,
+    colorEdge = TRUE), TRUE) 
+if(length(P) > 1){ P + ggtitle("GO BP PWs (AMC)")  +  
+        scale_color_gradientn(colours =c("lightsalmon", "tomato", "firebrick4"))}
+```
+
+
+## GO terms (MF) {.tabset}
+
+If a tab does not contain an extra plot, no enrichments were found for that cell population.
+
+### Comparison
+
+```{r gomf_cluster_comparison, fig.width = 7, message=FALSE, warning=FALSE}
+## visualization
+dotplot(cc.gomf) + ggtitle("Overrepresented GO MF terms") + 
+     scale_color_gradientn(colours =rev(c("azure2", "darkseagreen1", "seagreen2","seagreen3")), limits = c(0, 0.05))
+```
+
+- geneRatio should be number of genes that overlap gene set divided by size of gene set
+
+### AIC
+
+```{r gomf_aic_cnetplot, fig.height = 12, fig.width = 15}
+#gomf_aic <- enrichGO(gene = clstcomp.list$AIC, OrgDb = org.Mm.eg.db,
+#    ont = "MF", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez_noRibo$ENTREZID)
+
+P <- try(cnetplot(gomf_aic, showCategory = 8, foldChange = logFClist$AIC, 
+    colorEdge = TRUE), TRUE) 
+if(length(P) > 1){ 
+    P + ggtitle("GO MF PWs (AIC)")
+}
+```
+
+
+### Transition
+
+```{r gomf_transition_cnet, fig.width = 15, fig.height = 10}
+#gomf_trans <- enrichGO(gene = clstcomp.list$transition, OrgDb = org.Mm.eg.db,
+#    ont = "MF", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez_noRibo$ENTREZID)
+
+P <- try(cnetplot(gomf_trans, showCategory = 8,
+    foldChange = logFClist$transition,
+    colorEdge = TRUE), TRUE)  
+if(length(P) > 1){ P + ggtitle("GO MF PWs (Transition population)") +  
+        scale_color_gradientn(colours =c("lightsalmon", "tomato", "firebrick4"))}
+```
+
+* grey bubbles = name of the gene set at hand (e.g. "translational elongation"
+    - size = number of marker genes that are part of the gene set
+* edges = colored by gene set
+* nodes belonging to each gene set represent individual genes (e.g. Rack1)
+    - their color represents the logFC of that gene in the respective cluster compared to the expression of the gene in all other clusters
+
+
+### AMC
+
+```{r gomf_amc_cnet, fig.width = 16, fig.height = 12}
+#gomf_amc <- enrichGO(gene = clstcomp.list$AMC,OrgDb = org.Mm.eg.db,
+#    ont = "MF", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez_noRibo$ENTREZID)
+P <- try(cnetplot(gomf_amc, showCategory = 8, foldChange = logFClist$AMC,
+    colorEdge = TRUE), TRUE) 
+if(length(P) > 1){ P + ggtitle("GO MF PWs (AMC)")  +  
+        scale_color_gradientn(colours =c("lightsalmon", "tomato", "firebrick4"))}
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+

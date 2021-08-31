@@ -1,0 +1,548 @@
+---
+title: "V(D)J-seq based plots for Gearty et al. (2021)"
+author: "Friederike Dündar | Weill Cornell Medicine"
+date: "2021"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '6'
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+    toc_depth: 6
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r message=FALSE, cache=FALSE}
+library(SingleCellExperiment)
+library(magrittr); library(data.table)
+library(ggplot2); theme_set(theme_bw(base_size = 14))
+library(patchwork)
+library(ggalluvial)
+library(scales)
+source("src/utils_SCE.R")
+source("src/load_data_from_box.R")
+
+tf <- function(tissue_as_character){
+    factor(tissue_as_character, levels = c("pLN.Tcf1hi","pLN.Tcf1lo","pancreas"), ordered = TRUE)
+}
+
+popf <- function(population_as_character){
+    factor(population_as_character, 
+        levels = c("pancreas","pLN.Tcf1hi,pancreas","pLN.Tcf1hi,pLN.Tcf1lo,pancreas",
+            "pLN.Tcf1lo,pancreas","pLN.Tcf1hi,pLN.Tcf1lo","pLN.Tcf1lo","pLN.Tcf1hi"), 
+        ordered = TRUE)
+}
+```
+
+The plots here are based on the results of a V(D)J-seq experiment where CD8 T cells from pancreatic lymphnodes (pLN) and the pancreas (panc) were obtained and their TCR gene sequences were profiled with 10X Genomics' V(D)J sequencing strategy.
+
+
+```{r define_colors}
+## define color scheme
+tcfcols <- c("#1E498F", "#5E3DD8","#D72027")
+names(tcfcols) <- c("pLN.Tcf1hi","pLN.Tcf1lo","pancreas")
+
+shared_cols <- c("khaki1","#39568CFF")
+
+## expression gradient colors
+grad_cols <- c("grey85","yellow","orange","firebrick4")
+express_cols <-  c("grey85","tan1","tomato1","tomato2","firebrick3","firebrick4")
+```
+
+
+```{r load_tcr_data}
+fls <- fread("data/data_links.txt", header=TRUE)
+tcrCells <- load_RDSdata_from_Box(fls[object=="vdj"]$link)
+
+## FILTERING =================================================================
+## keep those where we have info from the same mouse for both panc & pLN,
+## as well as max. one TRA and/or one TRB sequence
+tcrCells <- tcrCells[pairedExp == TRUE & chains %in% c("TRA","TRB","TRA;TRB")]
+tcrCells[Tissue == "panc", population := "pancreas"]
+## remove those for which we don't have scRNA-seq info from the pLN, 
+## i.e. their population info is missing
+tcrCells[is.na(population), population := "pLN"]; tcrCells <- tcrCells[population != "pLN"] 
+## define Tcf status
+tcrCells[ , Tcf.status :=
+        ifelse(population %in% c("AIC","transition"), "pLN.Tcf1hi",
+            ifelse(population=="AMC", "pLN.Tcf1lo", "pancreas"))]
+
+## count ======================================================================
+clono_per_pop <-  tcrCells[, .N, by = c("new_cid","Tcf.status", "Mouse")]
+shared_across_pops <- clono_per_pop[, .N, new_cid] %>% .[N>1] %>% .$new_cid
+clono_per_pop[, shared_between_pops := ifelse(new_cid %in% shared_across_pops, TRUE, FALSE)]
+clono_per_pop[, pseudo_clono.ID := ifelse(shared_between_pops, paste0(new_cid, Mouse), "unique")]
+clono_per_pop[, allPops := paste(sort(unique(Tcf.status)), collapse=","), by = new_cid]
+## fix the order of the labels
+clono_per_pop[ allPops=="pancreas,pLN.Tcf1hi", allPops := "pLN.Tcf1hi,pancreas"]
+clono_per_pop[ allPops=="pancreas,pLN.Tcf1hi,pLN.Tcf1lo", allPops := "pLN.Tcf1hi,pLN.Tcf1lo,pancreas"]
+clono_per_pop[ allPops=="pancreas,pLN.Tcf1lo", allPops := "pLN.Tcf1lo,pancreas"]
+```
+
+### Clonotype frequencies
+
+```{r fig.width = 15, fig.height = 8, message=FALSE}
+p1 <-  ggplot(clono_per_pop, aes(y = shared_between_pops, x = log2(N), fill = shared_between_pops)) +
+    ggridges::geom_density_ridges2(scale=0.95) +
+     scale_fill_manual(values=shared_cols) +
+     ylab("number of cells") +   xlab("log2(number of cells)") +
+    facet_wrap(~tf(Tcf.status))  +
+    theme(legend.position = "bottom", panel.grid = element_blank())
+p2 <- ggplot(clono_per_pop, aes(x = shared_between_pops, y = N, fill = shared_between_pops)) +
+    geom_boxplot(fill = "white", notch=TRUE) + 
+    ggbeeswarm::geom_quasirandom(size=2, shape=21, alpha=.7) + 
+    facet_wrap(~tf(Tcf.status)) +
+    scale_fill_manual(values=shared_cols) +
+    xlab("clonotype found in more than one cell population\n(from the same mouse)") +
+     ylab("number of cells") +
+    theme(legend.position = "none",
+        panel.grid.minor=element_blank(),
+        panel.grid.major.x = element_blank()) +
+    scale_y_continuous(trans=log2_trans())
+pw <- p1 + p2
+pw + plot_annotation(title = "Number of cells per clonotype per population", 
+    subtitle = "Split by whether a clonotype is unique or found across multiple populations")
+```
+
+These plots demonstrate that clonotypes that are found in just one population ("FALSE"; yellow) tend to be found in single cells (N=1) whereas clonotypes that are found across multiple populations ("TRUE"; darkblue) are usually found in multiple cells per population.
+
+## Counting clonotypes
+
+```{r}
+clono_per_allPops <- clono_per_pop[, -c("N","Tcf.status")] %>% unique
+```
+
+
+```{r}
+ggplot(clono_per_allPops, aes(x = popf(allPops))) + 
+    geom_bar() + coord_flip() +
+    theme(panel.grid = element_blank()) +
+    xlab("") + ylab("number of clonotypes")
+```
+
+Here are the numbers:
+
+```{r}
+clono_per_allPops[, .N, allPops]
+```
+
+
+```{r fig.width = 8}
+ggplot(clono_per_pop, aes(x = tf(Tcf.status), fill = shared_between_pops)) + 
+    geom_bar(position = position_dodge(), color = "grey75") + 
+    scale_fill_manual(values = shared_cols) + xlab("") + ylab("Number of clonotypes") +
+    theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank())
+```
+
+And here's the same figure, just stacked:
+
+```{r fig.height = 3}
+ggplot(clono_per_pop[Tcf.status != "pancreas"], aes(x = tf(Tcf.status),
+    fill = factor(shared_between_pops, levels = c(TRUE, FALSE), ordered = TRUE))) + 
+    geom_bar( color = "grey75") + 
+    scale_fill_manual(values = rev(shared_cols), name = "shared") + xlab("") + ylab("Number of clonotypes") +
+    theme(panel.grid = element_blank()) +
+    coord_flip()
+```
+
+The plots above don't show the counts at the individual mouse level, which may help simplify things.
+The actual numbers underlying the plots above:
+
+```{r }
+clono_per_pop[, .N, by = c("Tcf.status","shared_between_pops")] %>% 
+    dcast(Tcf.status ~ shared_between_pops, value.var = "N")
+```
+
+#### Verbose clonotype number statements
+
+* There are `r length(unique(tcrCells$new_cid))` clonotypes **across all cells** of which `r length(shared_across_pops)` are found in more than one population ("shared").
+* There are `r length(unique(tcrCells[Tissue == "panc"]$new_cid))` clonotypes in the **pancreas** of which `r length(unique(tcrCells[Tissue == "panc" & new_cid %in% shared_across_pops]$new_cid))` are shared with at least one pLN population.
+    - Of these `r nrow(clono_per_allPops[grepl("pancreas", allPops)])` shared pancreas clonotypes `r nrow(clono_per_allPops[grepl("pancreas", allPops) & grepl("Tcf1hi", allPops)])` are found in the Tcf1hi population (and `r nrow(clono_per_allPops[grepl("pancreas", allPops) & grepl("Tcf1lo", allPops)])` in the Tcf1-lo population)
+* There are `r length(unique(tcrCells[Tcf.status == "pLN.Tcf1hi"]$new_cid))` in the **pLN.Tcf1hi population** of which `r length(unique(tcrCells[Tcf.status == "pLN.Tcf1hi" & new_cid %in% shared_across_pops]$new_cid))` are shared with other populations.
+    - Of these `r length(unique(tcrCells[Tcf.status == "pLN.Tcf1hi" & new_cid %in% shared_across_pops]$new_cid))` shared clonotypes, `length(unique(tcrCells[Tcf.status == "pLN.Tcf1hi" & new_cid %in% shared_across_pops & new_cid %in% tcfHI_and_panc]$new_cid))` are found in the pancreas, too.
+
+```{r fig.height = 7, fig.width = 7}
+gplots::venn(list(pancreas = unique(clono_per_allPops[grepl("pancreas", allPops)]$new_cid),
+    pLN.Tcf1hi = unique(clono_per_allPops[grepl("Tcf1hi", allPops)]$new_cid), 
+    pLN.Tcf1lo = unique(clono_per_allPops[grepl("Tcf1lo", allPops)]$new_cid)))
+```
+
+
+#### Per mouse
+
+To bring the individual mouse information back in, we can use scatter plots again:
+
+```{r}
+clono_per_pop[, .N, by = c("Tcf.status","shared_between_pops","Mouse")] %>%
+    ggplot(., aes(x = tf(Tcf.status), y = N, fill = shared_between_pops,label = Mouse)) + 
+    ggbeeswarm::geom_quasirandom(dodge.width = .8, shape=21, groupOnX = TRUE) +
+    scale_fill_manual(values = shared_cols) +
+    ylab("number of clonotypes") + xlab("") +
+    ggtitle("Number of clonotypes per mouse") +
+    theme(panel.grid.minor = element_blank(), panel.grid.major.x = element_blank()) 
+```
+
+```{r}
+clono_per_pop[, .N, by = c("Tcf.status","shared_between_pops","Mouse")] %>%
+    dcast(Mouse + Tcf.status ~ shared_between_pops, value.var = "N")
+```
+
+And here are the mean values:
+
+```{r}
+clono_per_pop[, .N, by = c("Tcf.status","shared_between_pops","Mouse")] %>% .[ , mean(N), by = c("Tcf.status","shared_between_pops")] %>% dcast(Tcf.status~shared_between_pops, value.var = "V1")
+```
+
+I.e., for pLN.Tcf1hi there are, on average, 54 clonotypes per mouse that are not shared (=unique), whereas we detect only 1 to 2 unique clonotypes per mouse in the pLN.Tcf1lo population.
+
+These are the values if we do not split by shared or not-shared:
+
+```{r}
+clono_per_pop[, .N, by = c("Tcf.status","Mouse")] %>% .[ , mean(N), by = c("Tcf.status")]
+```
+
+##### Focus on unique = non-shared) ones
+
+```{r fig.height = 7, fig.width = 13}
+p1 <- clono_per_pop[shared_between_pops == FALSE] %>%
+    ggplot(., aes(x = Mouse,
+        fill = factor(Tcf.status, levels = c("pancreas","pLN.Tcf1lo","pLN.Tcf1hi"), ordered = TRUE))) + geom_bar() + coord_flip() +
+    scale_fill_manual(values = tcfcols) +
+    theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank(), legend.title = element_blank()) +
+    ggtitle("Number of unique clonotypes", subtitle = "clones found in just one population")
+
+p2 <- clono_per_pop[shared_between_pops == FALSE] %>%
+    ggplot(., aes(x = Mouse,
+        fill = factor(Tcf.status, levels = c("pancreas","pLN.Tcf1lo","pLN.Tcf1hi"), ordered = TRUE))) + geom_bar(position = "fill") + coord_flip() +
+    scale_fill_manual(values = tcfcols) +
+    theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank(), legend.title = element_blank()) +
+    ggtitle("Number of unique clonotypes", subtitle = "clones found in just one population") + ylab("number of unique clonotypes (fraction per mouse)")
+
+p1 + p2
+```
+
+
+##### Fractions
+
+```{r fig.height = 7, fig.width = 8}
+ggplot(clono_per_pop, aes(x = Mouse, fill = shared_between_pops)) + geom_bar(position = "fill") + coord_flip() +
+    scale_fill_manual(values = shared_cols) +
+    theme(panel.grid.minor = element_blank(), 
+        panel.grid.major.y = element_blank(), 
+        legend.position = "bottom") +
+    facet_grid(~tf(Tcf.status)) +
+    ggtitle("Shared vs. unique clonotypes") + ylab("number of clonotypes (fraction per mouse)")
+```
+
+The following plots show the same data, just with small tweaks each iteration:
+
+```{r }
+clonoFracs <- clono_per_pop[, .N, by = c("Tcf.status","shared_between_pops","Mouse")]
+clonoFracs[, total_per_Tcf := sum(N), by = c("Mouse","Tcf.status")]
+clonoFracs[, frac_per_Tcf := N/total_per_Tcf]
+```
+
+```{r fig.width = 20}
+p1 <- ggplot(clonoFracs[shared_between_pops==TRUE],
+    aes(x = tf(Tcf.status), y = frac_per_Tcf, color = Mouse)) +
+    ggbeeswarm::geom_quasirandom() + 
+    ggtitle("Fraction of shared clonotypes", subtitle = "found in at least 2 populations") +
+    ylab("shared / (shared + unique)") + xlab("population") +
+    theme(panel.grid.minor = element_blank(), 
+        panel.grid.major.x = element_blank())
+
+p2 <- ggplot(clonoFracs[shared_between_pops==TRUE],
+    aes(x = tf(Tcf.status), y = frac_per_Tcf)) +
+    geom_boxplot() + 
+    ggbeeswarm::geom_quasirandom(aes(color = Mouse)) +  
+    ggtitle("Fraction of shared clonotypes", subtitle = "found in at least 2 populations") +
+    ylab("shared / (shared + unique)") + xlab("population") +
+    theme(panel.grid.minor = element_blank(), 
+        panel.grid.major.x = element_blank())
+
+p3 <- ggplot(clonoFracs[shared_between_pops==TRUE],
+    aes(x = tf(Tcf.status), y = frac_per_Tcf)) +
+    geom_boxplot() + 
+    ggbeeswarm::geom_quasirandom(aes(color = Tcf.status), size = 2, alpha = .8) +  
+    ggtitle("Fraction of shared clonotypes", subtitle = "found in at least 2 populations") +
+    ylab("shared / (shared + unique)") + xlab("population") +
+    scale_color_manual(values = tcfcols) +
+    theme(panel.grid.minor = element_blank(), 
+        panel.grid.major = element_blank())
+
+p1 + p2 + p3
+```
+
+
+```{r}
+clonoFracs[shared_between_pops==TRUE, median(frac_per_Tcf), by = Tcf.status]
+```
+
+#### Counting cells {.tabset}
+
+```{r}
+tcrCells[, .N, Tcf.status]
+```
+```{r }
+tcfHI_and_panc <- unique(clono_per_allPops[grepl("Tcf1hi.*panc", allPops)]$new_cid)
+tcrCells.panc <- tcrCells[Tissue == "panc"]
+tcrCells.panc[ , from_pLN.Tcf1hi := ifelse(new_cid %in% tcfHI_and_panc, "pLN.Tcf1hi origin", "not found in pLN Tcf1hi")]
+```
+
+
+There are `r nrow(tcrCells[Tissue == "panc"])` cells in total from the pancreas.
+`r nrow(tcrCells[ Tissue == "panc" & new_cid %in% shared_across_pops])` (91%) cells of these have a clonotype that's either found in Tcf1.hi and/*or* Tcf1.lo in the pLN ("shared").
+`nrow(tcrCells[ Tissue == "panc" & new_cid %in% shared_across_pops & new_cid %in% tcfHI_and_panc])` (89%) cells have a clonotype that's shared with pLN.Tcf1.hi (and possibly *also* in Tcf1.lo)
+
+In the pLN.Tcf1.hi-population, we have `r nrow(tcrCells[ new_cid %in% tcfHI_and_panc & Tcf.status == "pLN.Tcf1hi"])` (of `r nrow(tcrCells[  Tcf.status == "pLN.Tcf1hi"])` total) cells that have a clonotype that's found in the pancreas, too.
+
+The following Venn diagrams depict the **number of cells** from each population that have clonotypes that are either exclusive to that population or found in any of the other populations, too.
+
+```{r}
+clono_in_tcfhi <- unique(clono_per_allPops[grepl("Tcf1hi", allPops)]$new_cid)
+clono_in_tcflo <- unique(clono_per_allPops[grepl("Tcf1lo", allPops)]$new_cid)
+clono_in_panc <- unique(clono_per_allPops[grepl("panc", allPops)]$new_cid)
+```
+
+##### Pancreas cells 
+
+```{r fig.height = 10, fig.width = 10}
+gplots::venn(list(
+    pancCells_clono_in_Tcf1hi = tcrCells[Tcf.status == "pancreas" & new_cid %in% clono_in_tcfhi]$new_cid,
+    pancCells_clono_in_Tcf1lo = tcrCells[Tcf.status == "pancreas" & new_cid %in% clono_in_tcflo]$new_cid,
+    pancreas.CELLS = tcrCells[Tcf.status == "pancreas"]$new_cid))
+```
+
+##### Tcf1-hi cells
+
+```{r fig.height = 10, fig.width = 10}
+gplots::venn(list(
+    pLNTcf1hiCells_clono_in_panc = tcrCells[Tcf.status == "pLN.Tcf1hi" & new_cid %in% clono_in_panc]$new_cid,
+    pLNTcf1hiCells_clono_in_Tcf1lo = tcrCells[Tcf.status == "pLN.Tcf1hi" & new_cid %in% clono_in_tcflo]$new_cid,
+    pLNTcf1hi.CELLS = tcrCells[Tcf.status == "pLN.Tcf1hi"]$new_cid))
+```
+
+##### Tcf1-lo cells
+
+```{r fig.height = 10, fig.width = 10}
+gplots::venn(list(
+    pLNTcf1loCells_clono_in_panc = tcrCells[Tcf.status == "pLN.Tcf1lo" & new_cid %in% clono_in_panc]$new_cid,
+    pLNTcf1loCells_clono_in_Tcf1hi = tcrCells[Tcf.status == "pLN.Tcf1lo" & new_cid %in% clono_in_tcfhi]$new_cid,
+    pLNTcf1lo.CELLS = tcrCells[Tcf.status == "pLN.Tcf1lo"]$new_cid))
+
+```
+
+
+#### How many Tcf.hi make it to the pancreas?
+
+Here, I extract all clonotypes that aren't unique; this includes cases where a clonotype might only be found in pLN-Tcf.lo + pancreas:
+
+```{r fig.width = 12}
+p1 <- tcrCells[new_cid %in% shared_across_pops, c("Mouse","Tcf.status","pLN_and_panc","new_cid")] %>%
+    unique %>%
+    ggplot(., aes(x = Mouse, fill = pLN_and_panc)) + 
+    geom_bar() + coord_flip() +
+    scale_fill_manual(values = c("blue","#D72027")) +
+    ylab("number of clonotypes") +
+    theme(panel.grid = element_blank())
+
+p2 <- tcrCells[new_cid %in% shared_across_pops, c("Mouse","Tcf.status","pLN_and_panc","new_cid")] %>%
+    unique %>%
+    ggplot(., aes(x = Mouse, fill = pLN_and_panc)) + 
+    geom_bar(position = "fill") + coord_flip() +
+    scale_fill_manual(values = c("blue","#D72027")) + 
+    ylab("number of clonotypes") +
+    theme(panel.grid = element_blank())
+
+pw <- p1 + p2
+pw + plot_annotation(title = "Non-unique clonotypes")
+```
+
+And here we focus on clonotypes where at least one cell is found in the pLN.Tcf1hi population, more directly addressing the question of how many Tcf1-hi-cells make it to the pancreas.
+
+```{r fig.width = 12}
+clono_tcf1hi <- tcrCells[new_cid %in% shared_across_pops & Tcf.status == "pLN.Tcf1hi",
+    c("Mouse","Tcf.status","pLN_and_panc","new_cid")] %>% unique 
+clono_tcf1hi[, Tcf.hi_and := ifelse(pLN_and_panc == TRUE, "pancreas", "pLN.Tcf1lo_only")]
+
+p1 <- ggplot(clono_tcf1hi, aes(x = Mouse, fill = Tcf.hi_and)) + geom_bar() + coord_flip() +
+    scale_fill_manual(values = c("#D72027","#5E3DD8")) +
+    ylab("number of clonotypes") + xlab("") +
+    theme(panel.grid = element_blank())
+
+p2 <- ggplot(clono_tcf1hi, aes(x = Mouse, fill = Tcf.hi_and)) + geom_bar(position = "fill") + coord_flip() +
+    scale_fill_manual(values = c("#D72027","#5E3DD8")) + # ggtitle("Non-unique clonotypes with min. 1 cell in the pLN-Tcf1hi population") +
+    ylab("number of clonotypes") + xlab("") +
+    theme(panel.grid = element_blank())
+    
+pw <- p1 + p2
+pw + plot_annotation("How often do Tcf1-hi cells that we find in multiple populations end up in the pancreas?", 
+    subtitle = "Non-unique clonotypes with min. 1 cell in the pLN-Tcf1hi population")
+```
+
+This shows that there is some variability between mice, but in most cases, we see well above 50% of the clonotypes ending up in the pancreas.
+
+We can try to translate that to cell numbers (instead of clonotype numbers) to get a better sense of how many cells likely had their origin in pLN1-Tcf.hi
+That also illustrates the point of the expansion of those clonotypes that we actually do find shared. I.e. many of the unique clonotypes in the pancreas are also not expanded.
+
+How many *cells* **in the pancreas** represent clonotypes that we also see in pLN.Tcf1-hi?
+
+```{r}
+ table(tcrCells.panc$from_pLN.Tcf1hi)
+```
+
+```{r fig.width = 12, fig.height = 8}
+p1 <- ggplot(tcrCells.panc, aes(x = Mouse, fill = from_pLN.Tcf1hi)) +
+    geom_bar() + coord_flip() +
+    theme(panel.grid = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = c("peachpuff", "#D72027")) +
+    ylab("cells") + xlab("")
+
+p2 <- ggplot(tcrCells.panc, aes(x = Mouse, fill = from_pLN.Tcf1hi)) +
+    geom_bar(position = "fill") + coord_flip() +
+    theme(panel.grid = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = c("peachpuff", "#D72027")) +
+    ylab("cells") + xlab("")
+
+pw <-  p1 + p2 
+pw + plot_annotation(title = "Where do cells from the pancreas originate from?")
+```
+
+And, correspondingly, going back to the clonotypes: Pick the **clonotypes** found in the pancreas and color them based on whether they're also seen in the Tcf1-hi population.
+
+```{r fig.height = 10, fig.width = 13}
+clono_panc <- tcrCells.panc[, c("new_cid","Mouse","from_pLN.Tcf1hi")] %>% unique
+p1 <- ggplot(clono_panc, aes(x = Mouse, fill = from_pLN.Tcf1hi)) +
+    geom_bar() + coord_flip() +
+    theme(panel.grid = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = c("peachpuff", "#D72027")) +
+    ylab("clonotypes") + xlab("")
+
+p2 <- ggplot(clono_panc, aes(x = Mouse, fill = from_pLN.Tcf1hi)) +
+    geom_bar(position = "fill") + coord_flip() +
+    theme(panel.grid = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = c("peachpuff", "#D72027")) +
+    ylab("clonotypes") + xlab("")
+
+pw <- p1 + p2 
+pw + plot_annotation(title = "Do we find clonotypes from the pancreas in our pLN.Tcf1-hi population?")
+```
+
+And focusing just on the clonotypes that we find in both pancreas and pLN, how many of those come from pLN-hi?
+
+```{r fig.height = 10, fig.width = 13}
+clono_panc <-  clono_per_pop[grepl("pLN.*panc", allPops), c("new_cid","Mouse","allPops")] %>% unique
+clono_panc[, pancreas_and := ifelse(grepl("Tcf1hi", allPops), "pLN.Tcf1hi", "pLN.Tcf1lo")]
+p1 <- ggplot(clono_panc, aes(x = Mouse, fill = pancreas_and)) +
+    geom_bar() + coord_flip() +
+    theme(panel.grid = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = tcfcols) +
+    ylab("clonotypes") + xlab("")
+
+p2 <- ggplot(clono_panc, aes(x = Mouse, fill = pancreas_and)) +
+    geom_bar(position = "fill") + coord_flip() +
+    theme(panel.grid = element_blank(),
+        legend.position = "bottom") +
+    scale_fill_manual(values = tcfcols) +
+    ylab("clonotypes") + xlab("")
+
+pw <- p1 + p2 
+pw + plot_annotation(title = "Do we find clonotypes from the pancreas that we also see in the pLN primarily in either Tcf population?", subtitle = "focus on clonotypes found in panc + pLN")
+```
+
+## Alluvial plots
+
+The plots below have all clonotypes that are NOT SHARED among different types of cells shown in YELLOW.
+All clonotypes that are NOT YELLOW are present in **>1 population of cells**.
+
+```{r alluvials_summary_indCloneColors, fig.height = 25, fig.width = 45}
+pl <- lapply(unique(clono_per_pop$Mouse), function(x){
+    you <- clono_per_pop[Mouse == x]
+    yo.tmp <- clono_per_pop[Mouse ==  x]
+    setorder(yo.tmp, -shared_between_pops, -N)
+    
+    you$Tcf.status <- factor(you$Tcf.status,levels = c("pLN.Tcf1hi","pLN.Tcf1lo","pancreas"), ordered = TRUE)
+    
+    ## recount 
+    you <- you[ , sum(N), by = c("new_cid","Tcf.status") ] %>%
+        you[., on = c("new_cid","Tcf.status")]
+    you[, total := sum(V1), by = c("Mouse","Tcf.status")]
+    you[, frac := V1/total]
+    
+    you$new_cid <- factor(you$new_cid, levels = unique(yo.tmp$new_cid), ordered = TRUE)
+    you$pseudo_clono.ID <- factor(you$pseudo_clono.ID,
+        levels = unique(yo.tmp$pseudo_clono.ID), ordered = TRUE)
+    
+    clon_cols_n <- nlevels(factor(you$pseudo_clono.ID)) -1
+    clon_cols <- colorRampPalette(c("#0D0887FF" ,"#7E03A8FF", "#CC4678FF", "#F89441FF"))(clon_cols_n)
+    
+    P <- ggplot(you, 
+        aes(x = Tcf.status, y = frac, stratum = new_cid,
+            alluvium = new_cid, fill = pseudo_clono.ID, label = pseudo_clono.ID)) +
+        geom_stratum(width = .3, lwd = .1) +
+        geom_alluvium( width = .3) + 
+        scale_fill_manual(values = c(clon_cols,"khaki1")) +
+        theme(legend.position = "none",
+            panel.grid.minor=element_blank(),
+            panel.grid.major=element_blank()) + 
+        ggtitle(x) + ylab("fraction of cells per population") + xlab("")
+    return(P)
+})
+ABCutilities::MultiPlotList(pl, cols = 7)
+```
+
+Here are the absolute counts instead of the frequencies:
+
+```{r alluvials_summary_indCloneColors_counts, fig.height = 25, fig.width = 45}
+pl <- lapply(unique(clono_per_pop$Mouse), function(x){
+    you <- clono_per_pop[Mouse == x]
+    yo.tmp <- clono_per_pop[Mouse ==  x]
+    setorder(yo.tmp, -shared_between_pops, -N)
+    
+    you$Tcf.status <- factor(you$Tcf.status,levels = c("pLN.Tcf1hi","pLN.Tcf1lo","pancreas"), ordered = TRUE)
+    
+    ## recount 
+    you <- you[ , sum(N), by = c("new_cid","Tcf.status") ] %>%
+        you[., on = c("new_cid","Tcf.status")]
+
+    you$new_cid <- factor(you$new_cid, levels = unique(yo.tmp$new_cid), ordered = TRUE)
+    you$pseudo_clono.ID <- factor(you$pseudo_clono.ID,
+        levels = unique(yo.tmp$pseudo_clono.ID), ordered = TRUE)
+    
+    clon_cols_n <- nlevels(factor(you$pseudo_clono.ID)) -1
+    clon_cols <- colorRampPalette(c("#0D0887FF" ,"#7E03A8FF", "#CC4678FF", "#F89441FF"))(clon_cols_n)
+    
+    P <- ggplot(you, 
+        aes(x = Tcf.status, y = N, stratum = new_cid,
+            alluvium = new_cid, fill = pseudo_clono.ID, label = pseudo_clono.ID)) +
+        geom_stratum(width = .3, lwd = .1) +
+        geom_alluvium( width = .3) + 
+        scale_fill_manual(values = c(clon_cols,"khaki1")) +
+        theme(legend.position = "none",
+            panel.grid.minor=element_blank(),
+            panel.grid.major=element_blank()) +
+        ggtitle(x) + ylab("number of cells per population") + xlab("")
+    return(P)
+})
+ABCutilities::MultiPlotList(pl, cols = 7)
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+
