@@ -1,0 +1,17 @@
+sample.ID	qc.data.dir	condition	cell_type	tcf1	cell_num	diabetic	sex	num_mice	age
+1	LNnaive-3	LNnaive-3	polyclonal_naive	polyclonal_naive	high	9066	FALSE	F	1	6
+2	LNnaive-2	LNnaive-2	polyclonal_naive	polyclonal_naive	high	10280	FALSE	F	1	6
+3	LNnaive-1	LNnaive-1	polyclonal_naive	polyclonal_naive	high	4959	FALSE	F	1	6
+4	LN14-LO-C	LN14-LO-C	pancreas_LN_TCF1lo	pancreatic_lymph_node	low	1762	TRUE	F	1	14
+5	LN14-LO-B	LN14-LO-B	pancreas_LN_TCF1lo	pancreatic_lymph_node	low	1388	FALSE	F	2	14
+6	LN14-LO-A	LN14-LO-A	pancreas_LN_TCF1lo	pancreatic_lymph_node	low	1425	FALSE	F	2	14
+7	LN14-HI-C	LN14-HI-C	pancreas_LN_TCF1hi	pancreatic_lymph_node	high	3046	TRUE	F	1	14
+8	LN14-HI-B	LN14-HI-B	pancreas_LN_TCF1hi	pancreatic_lymph_node	high	2036	FALSE	F	1	14
+9	LN14-HI-A	LN14-HI-A	pancreas_LN_TCF1hi	pancreatic_lymph_node	high	2648	FALSE	F	3	14
+10	LN14-AD-HI	LN14-AD-HI	pancreas_LN_TCF1hi	pancreatic_lymph_node	high	680	FALSE	M	5	14
+11	2020_PA-D-1	2020_PA-D-1	pancreas_diabetic	pancreas	low	1501	TRUE	M	2	16
+12	2020_PA-D-4	2020_PA-D-4	pancreas_diabetic	pancreas	low	1981	TRUE	F	6	20
+13	2020_PA-ND-1	2020_PA-ND-1	pancreas_nondiabetic	pancreas	low	1221	FALSE	M	1	16
+14	2020_PA-ND-2	2020_PA-ND-2	pancreas_nondiabetic	pancreas	low	1033	FALSE	M	1	16
+15	2020_PA-ND-3	2020_PA-ND-3	pancreas_nondiabetic	pancreas	low	1094	FALSE	F	3	16
+16	2020_PA-ND-4	2020_PA-ND-4	pancreas_nondiabetic	pancreas	low	1622	FALSE	F	1	16
