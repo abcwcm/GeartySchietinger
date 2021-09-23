@@ -100,7 +100,7 @@ Differential gene expression analysis was performed using *DESeq2* with default 
 
 ```{r de_analysis_simple, message=FALSE, eval=TRUE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
 
-decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node" & sample.ID != "LN14-LO") # decoder.data
+decoder.data.sub <-  subset(decoder.data, cell_type=="pancreatic_lymph_node") # decoder.data
 cnts <- counts[,decoder.data.sub$sample.ID]
 conds <- factor(make.names(decoder.data.sub$condition),levels=c("pancreas_LN_TCF1lo","pancreas_LN_TCF1hi"))
 

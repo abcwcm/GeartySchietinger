@@ -149,6 +149,7 @@ kable(df_deg, row.names=T)  %>%  kable_styling(bootstrap_options = c("striped", 
 
 
 library(clusterProfiler)
+library(org.Mm.eg.db) #v‘3.5.0’
 deg = deseq2.res.sig_LN_TCF1hi_vs_LN_TCF1low0.10_shrunk_all
 ## get entrez IDs
 eg <- clusterProfiler::bitr(row.names(deg), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Mm.eg.db") %>% as.data.table
@@ -185,3 +186,4 @@ subset(cp.GO_bp_old, ID %in% c("GO:0098813", "GO:0140014","GO:0000819", "GO:0002
 subset(cp.GO_bp_old, ID %in% c("GO:0050863", "GO:0001819", "GO:0030098", "GO:0022407", "GO:0042110"))
 
 ```
+
