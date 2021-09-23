@@ -132,7 +132,7 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 
 ## Data for download
 
-The raw data (fastq files, read counts from CellRanger) can be downloaded from GEO.
+The raw data (fastq files, read counts from CellRanger) can be downloaded from GEO (GSE151652).
 
 For the single-cell data, some of the data can be downloaded from Box in the form of RDS (load into R via `in_data <- readRDS()`) or RDA objects (load into R via `load()`).
 The `data/` directory in the scRNA-seq section contains some text files that contain just the cell labels and the mouse labels for individual cells.
