@@ -8,6 +8,7 @@ The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T
 * [Integration of public scRNA-seq data sets](#integration-with-public-scRNA-seq-data-sets)
 * [References](#references)
 * [Software versions](#package-versions)
+* [Data for download](#data-for-download)
 
 All scripts were written by Paul Zumbo and Friederike Dündar.
 Samples were prepared by Sofia Gearty and the sequencing facilities at MSKCC and Weill Cornell Medicine.
@@ -128,3 +129,17 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 - STAR v2.6.0c
 - SummarizedExperiment_1.20.0
 - scran_1.18.0
+
+## Data for download
+
+| File_name |	Robject_type	| Details |
+|--------------|-------------|------------|
+| [sce_integrated_pLNSamples_filtered.rds](https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds) | RDS |	`SingleCellExperiment` object with logcounts, reduced dimensionality coordinates, labels and so on for the integrated pLN data set that is the basis for most of the scRNA-seq figures in Gearty et al.; code details can be found in `scRNA_seq/processing_scRNA-seq.md` and `scRNA_seq/figures_scRNAseq.Rmd` |
+| [GOenrich_BP_pLNmarkers.rda](https://wcm.box.com/shared/static/8k2cudvwqxw05iyywz8d36oof2qavjb8.rda) |	RDA	| Result of `clusterProfiler`'s `goEnrich()` on marker genes of pLN populations with GO terms biological processes |
+| [GOenrich_MF_pLNmarkers.rda](https://wcm.box.com/shared/static/3zstp6yohqvrc31t26tzs8ox5pr5ukm6.rda) |	RDA	| Result of `clusterProfiler`'s `goEnrich()` on marker genes of pLN populations with GO terms molecular functions |
+| [tcr_perCell_pairedSamples_newCID_2021-05.rds](https://wcm.box.com/shared/static/5wj8h9qssai2u0ya2sre2tsudahvvoni.rds) | RDS	| clonotype IDs and labels for cells that were found in pLN as well as pancreas samples from the same mice ("paired") |
+| [tscan_lineData_DiffMap.rda](https://wcm.box.com/shared/static/rakg00duv7j5v18e9jw2jq93px187l3h.rda) |	RDA | `TSCAN` results |
+| [sce_integrated_with_YaoProgsMpecs-and-Schauder.rds](https://wcm.box.com/shared/static/ixtkzzow5b4r2ck3u6zit2jtep7dunzv.rds) | RDS	| SingleCellExperiment object with logcounts and labels following the integration of Gearty's pLN data as well as MPECs and ProgLikes from Yao et al (2019) and d129-Tcm from Schauder et al (2021)!
+
+[image](https://user-images.githubusercontent.com/4973546/134584136-6aed30a5-d2f5-4869-b522-a53b57f8e08f.png)
+
