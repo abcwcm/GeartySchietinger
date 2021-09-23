@@ -1,7 +1,7 @@
 # Bioinformatic methods for Gearty et al.
 
 In Gearty et al we describe CD8 T cell populations that contribute to the continuous destruction of pancreatic beta cells leading to type 1 diabetes.
-The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T cells from pancreatic lymph nodes (pLN) and pancreas as well as single-cell RNA-seq data.
+The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T cells from murine pancreatic lymph nodes (pLN) and pancreas as well as single-cell RNA-seq data coupled with antibody-derived tags (CITE-seq) and single-cell TCR sequencing.
 
 * [Bulk RNA-seq](#bulk-rna-seq)
 * [single-cell VDJ and CITE-seq processing](#scvdj-and-scrna-seq-data-processing)
@@ -10,6 +10,7 @@ The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T
 * [Software versions](#package-versions)
 
 All scripts were written by Paul Zumbo and Friederike Dündar.
+Samples were prepared by Sofia Gearty and the sequencing facilities at MSKCC and Weill Cornell Medicine.
 Don't hesitate to [get in touch](https://abc.med.cornell.edu/) with questions related to the code.
 
 ![](WCM_MB_LOGO_HZSS1L_CLR_RGB.png)
@@ -51,7 +52,7 @@ Samples were stained with NRP-V7 tetramer, Live/dead Zombie dye, and antibodies 
 
 ### Processing and analysis
 
-VDJ and single-cell RNA-seq including hash-tagged oligos (HTO), and antibody-derived tags (ADT) data were processed following the recommendations by [Amezquita et al](https://bioconductor.org/books/release/OSCA) (version: 2020-11-13). In brief, raw read files were processed and aligned using the `CellRanger` pipeline (`cellranger-5.0.0` with `refdata-gex-mm10-2020-A`; for annotation supplied by 10X Genomics: <https://support.10xgenomics.com/single-cell-gene-expression/software/downloads/latest>).
+VDJ and single-cell RNA-seq including hash-tagged oligos (HTO; used to label cells coming from the same mouse), and antibody-derived tags (ADT; used to label cells based on the expression of selected surface markers) data were processed following the recommendations by [Amezquita et al](https://bioconductor.org/books/release/OSCA) (version: 2020-11-13). In brief, raw read files were processed and aligned using the `CellRanger` pipeline (`cellranger-5.0.0` with `refdata-gex-mm10-2020-A`; for annotation supplied by 10X Genomics: <https://support.10xgenomics.com/single-cell-gene-expression/software/downloads/latest>).
 Read counts representing gene expression were used for removing barcodes representing empty droplets or droplets with high amounts of mitochondrially encoded gene products: using the `isOutlier()` function of the scater package, all cells whose fractions of mitochondrial reads were higher than 3x median absolute deviation (MAD) were flagged and removed as well as cells with fewer than 10^2.5 detected genes.
 Following the first round of filtering, HTO demultiplexing and doublet detection were done with [`CiteFuse`](http://www.bioconductor.org/packages/release/bioc/html/CiteFuse.html), removing more droplets and identifying the donor mouse for each remaining droplet. After removal of low-quality droplets and barcodes associated with HTO-inferred doublets, ADT values were normalized using
 `DropletUtils::inferAmbience()` and `scuttle::medianSizeFactors()`.
@@ -61,7 +62,8 @@ VDJ sequencing data was imported into R using the `import_vdj()` function of the
 
 Size-factor normalized logcounts were obtained via `scran::computeSumFactors()` and `scater::logNormCounts()` (Lun2016, McCarthy2017).
 Cells from the three different technical replicates were integrated with `batchelor::fastMNN()` using the top 2500 most variable genes with min. mean normalized expression of 0.001 (Haghverdi2018).
-Clustering was performed with `igraph::cluster_louvain()`, dimensionality reductions were done with `scater` functions (`runUMAP()`) using the batch-corrected values and `destiny::diffusionMap()` (Lun2016clustering, Angerer2015). Marker genes were determined with `scran::findMarkers()`.
+Clustering was performed with `igraph::cluster_louvain()`, dimensionality reductions were done with `scater` functions (`runUMAP()`) using the batch-corrected values and `destiny::diffusionMap()` (Lun2016clustering, Angerer2015).
+Marker genes were determined with `scran::findMarkers()`.
 The `TSCAN package (v.1.28.0)` was used to calculate pseudotime values and trajectories as well as genes associated with the pseudotime gradients.
 GO term enrichments were calculated with the `clusterProfiler` package's functions `compareCluster()` and `enrichGO()` after excluding ribosomal genes from the gene lists of interest.
 All plots were generated using `ggplot2` packages and the `pheatmap` package for heatmaps.
@@ -71,7 +73,8 @@ All plots were generated using `ggplot2` packages and the `pheatmap` package for
 Gene count matrices for day 7 CD8 T cells from acute and chronic infection were obtained from GEO (GSE119940); using cell labels provided by Chen Yao we extracted the data for barcodes corresponding to memory precursor and memory-like cells as described in Yao et al. (2019).
 scRNA-seq data for Tcm were downloaded from GEO (day 129 following acute infection: GSM3732587) where they had been uploaded to by Schauder et al.
 scRNA-seq of Tcms, MPECS, and Tpex were subsequently integrated with the pLN data set using `batchelor::multiBatchNorm()` and `batchelor::fastMNN()` as described above.
-For global comparisons of the different populations of T cells, we created pseudo-bulk samples by aggregating the read counts per gene across cells of the same population. These were then cpm-normalized via `edgeR::calcNormFactors` (Robinson 2010) and subsequently analyzed and visualized via PCA and hierarchical clustering using base R functions as well as `pcaExplorer::hi_loadings()` and the `dendextend` package (Marini 2019, Galili 2015).
+For global comparisons of the different populations of T cells, we created pseudo-bulk samples by aggregating the read counts per gene across cells of the same population.
+These were then cpm-normalized via `edgeR::calcNormFactors` (Robinson 2010) and subsequently analyzed and visualized via PCA and hierarchical clustering using base R functions as well as `pcaExplorer::hi_loadings()` and the `dendextend` package (Marini 2019, Galili 2015).
 All other analyses were done with the same principles and packages as described above.
 
 ## References
