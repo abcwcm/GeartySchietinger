@@ -212,7 +212,6 @@ mks <- mks[!grepl("Rp[sl]", gene_symbol)]
 
 ```{r eval=FALSE}
 clust.markers.df <- lapply(clust.markers, as.data.frame)
-##openxlsx::write.xlsx(clust.markers.df, file = "~/Documents/Projects/2019-03_Sofia_SchietingerLab/CITEseq/data/NNEDS TO BE DETERMINED",rowNames = TRUE)
 ```
 
 ```{r mks_genes_hm, fig.height = 18, cache=FALSE}
