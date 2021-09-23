@@ -1,0 +1,254 @@
+---
+title: "Yao et al (2019), Nature Immunology"
+author: "Friederike Dündar | ABC @ WCM"
+date: "August 2021"
+output:
+    html_document:
+        toc: true
+        code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r cache=FALSE, message=FALSE}
+library(data.table); library(magrittr)
+library(ggplot2); theme_set(theme_bw(base_size = 14))
+library(patchwork)
+library(SingleCellExperiment)
+```
+
+
+>Yao C, Sun HW, Lacey NE, Ji Y et al. Single-cell RNA-seq reveals TOX as a key regulator of CD8<sup>+</sup> T cell persistence in chronic infection. Nat Immunol 2019 Jul;20(7):890-901. PMID: 31209400
+
+They followed CD8 T cells after *chronic* and *acute* LCMV infection.
+
+## Data download
+
+From [GEO](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE119940), counts etc. could be downloaded
+
+```
+## D7 P14 Cl13 2
+wget "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568592/suppl/GSM3568592%5FscRNA%5FD7%5FP14%5FCl13%5F2%5Fbarcodes%2Etsv%2Egz" --no-check-certificate
+wget "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568592/suppl/GSM3568592%5FscRNA%5FD7%5FP14%5FCl13%5F2%5Fgenes%2Etsv%2Egz" --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568592/suppl/GSM3568592%5FscRNA%5FD7%5FP14%5FCl13%5F2%5Fmatrix%2Emtx%2Egz --no-check-certificate
+
+## D7 P14 Cl13 1
+wget "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568588/suppl/GSM3568588%5FscRNA%5FD7%5FP14%5FCl13%5F1%5Fbarcodes%2Etsv%2Egz" --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568588/suppl/GSM3568588%5FscRNA%5FD7%5FP14%5FCl13%5F1%5Fgenes%2Etsv%2Egz --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568588/suppl/GSM3568588%5FscRNA%5FD7%5FP14%5FCl13%5F1%5Fmatrix%2Emtx%2Egz --no-check-certificate
+
+## D7 P14 Arm 1
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568587/suppl/GSM3568587%5FscRNA%5FD7%5FP14%5FArm%5F1%5Fbarcodes%2Etsv%2Egz --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568587/suppl/GSM3568587%5FscRNA%5FD7%5FP14%5FArm%5F1%5Fgenes%2Etsv%2Egz --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568587/suppl/GSM3568587%5FscRNA%5FD7%5FP14%5FArm%5F1%5Fmatrix%2Emtx%2Egz --no-check-certificate
+
+## D7 P14 Arm 2
+wget "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568591/suppl/GSM3568591%5FscRNA%5FD7%5FP14%5FArm%5F2%5Fbarcodes%2Etsv%2Egz" --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568591/suppl/GSM3568591%5FscRNA%5FD7%5FP14%5FArm%5F2%5Fgenes%2Etsv%2Egz --no-check-certificate
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3568nnn/GSM3568591/suppl/GSM3568591%5FscRNA%5FD7%5FP14%5FArm%5F2%5Fmatrix%2Emtx%2Egz --no-check-certificate
+
+## setting up directory structure for DropletUtils
+mkdir scRNA_D7_P14_Arm_1
+mkdir scRNA_D7_P14_Cl13_1
+mkdir scRNA_D7_P14_Arm_2
+mkdir scRNA_D7_P14_Cl13_2
+mv G*scRNA_D7_P14_Arm_1*gz scRNA_D7_P14_Arm_1/
+mv G*scRNA_D7_P14_Cl13_1* scRNA_D7_P14_Cl13_1/
+mv G*scRNA_D7_P14_Arm_2* scRNA_D7_P14_Arm_2/
+mv G*scRNA_D7_P14_Cl13_2* scRNA_D7_P14_Cl13_2/
+
+cd scRNA_D7_P14_Arm_1/
+mv GSM3568587_scRNA_D7_P14_Arm_1_barcodes.tsv.gz barcodes.tsv.gz
+mv GSM3568587_scRNA_D7_P14_Arm_1_genes.tsv.gz genes.tsv.gz
+mv GSM3568587_scRNA_D7_P14_Arm_1_matrix.mtx.gz matrix.mtx.gz 
+
+cd ../scRNA_D7_P14_Arm_2/
+mv GSM3568591_scRNA_D7_P14_Arm_2_genes.tsv.gz genes.tsv.gz
+mv GSM3568591_scRNA_D7_P14_Arm_2_barcodes.tsv.gz barcodes.tsv.gz
+mv GSM3568591_scRNA_D7_P14_Arm_2_matrix.mtx.gz matrix.mtx.gz
+
+cd ../scRNA_D7_P14_Cl13_1/
+mv GSM3568588_scRNA_D7_P14_Cl13_1_genes.tsv.gz genes.tsv.gz
+mv GSM3568588_scRNA_D7_P14_Cl13_1_barcodes.tsv.gz barcodes.tsv.gz
+mv GSM3568588_scRNA_D7_P14_Cl13_1_matrix.mtx.gz matrix.mtx.gz
+
+cd ../scRNA_D7_P14_Cl13_2/
+mv GSM3568592_scRNA_D7_P14_Cl13_2_barcodes.tsv.gz barcodes.tsv.gz
+mv GSM3568592_scRNA_D7_P14_Cl13_2_genes.tsv.gz genes.tsv.gz
+mv GSM3568592_scRNA_D7_P14_Cl13_2_matrix.mtx.gz matrix.mtx.gz
+```
+
+## SCE generation and integration with our data
+
+```{r SCE_on_server, eval=FALSE}
+options(menu.graphics=FALSE)
+library(SingleCellExperiment)
+library(DropletUtils)
+library(scater)
+library(scran)
+library(magrittr)
+source("src/load_data_from_box.R")
+
+data_dir <- "2021-08_Yao2019/data_from_GEO/"
+smpls <- c("scRNA_D7_P14_Arm_1","scRNA_D7_P14_Arm_2","scRNA_D7_P14_Cl13_1","scRNA_D7_P14_Cl13_2")
+
+scel <- lapply(smpls, function(x){
+    mysmp <- gsub("scRNA_", "", x)
+    print(paste("Reading CellRanger output for", x))
+    out.sce <- DropletUtils::read10xCounts(
+        samples = paste0(data_dir, x,"/"),
+        sample.names = mysmp,
+        version = "auto")
+})
+
+full_data <- do.call(cbind, lapply(scel, counts))
+cell_info <- do.call(rbind, lapply(scel, colData))
+gene_info <- rowData(scel[[1]])
+
+## combine in one object
+sce.all <- SingleCellExperiment(
+    list(counts = full_data), 
+    rowData = gene_info,
+    colData = cell_info, 
+    metadata = list(Samples = names(scel))
+)
+
+rm(scel); gc()
+
+## remove completely uncovered genes
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+#> dim(sce.all)
+#[1] 16029  7525
+
+
+## add cellnames
+cellnames <- lapply(unique(sce.all$Sample), function(x){
+    tmp <- sce.all[, sce.all$Sample==x]
+    n_smp <- ncol(tmp)
+    outnames <- paste(x, c(1:n_smp),sep=".")
+    return(outnames)
+}) %>% unlist
+colnames(sce.all) <- cellnames
+
+## add colData from Yao ===================================
+yaocd <- read.table("Yao2019_metadata.txt", header=F, skip = 1)
+names(yaocd) <- c("YaoCell","nGene","nUMI","orig.ident","percent.mito","res.0.5","res.1","res.1.5")
+    
+cd <- colData(sce.all)
+cd$YaoCell <- paste(gsub("_[12]$", "", cd$Sample), gsub("-[0-9]$","", cd$Barcode), sep = "_")
+cd$cell <- rownames(cd)
+
+## unfortunately, the Yao naming scheme ignores replicates, so I end up with a couple
+## of cells that are present more than once
+rm_cells <- table(cd$YaoCell) %>% as.data.frame %>% subset(., Freq>1) %>% .$Var1 %>% as.character
+cd <- subset(cd, !(YaoCell %in% rm_cells))
+cd <- merge(yaocd, as.data.frame(cd), by="YaoCell")
+cd <- DataFrame(cd)
+rownames(cd) <- cd$cell
+
+sce.all <- sce.all[, cd$cell]
+colData(sce.all) <- cd[colnames(sce.all),]
+
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+
+## Integration with our scRNA-seq data ================================
+library(magrittr)
+library(batchelor)
+library(scran)
+library(scater)
+library(patchwork)
+
+fnall <- "sce_integrated_with_Yao2019.rds"
+fnmerged <- "sceMultiout_integrated_with_Yao2019.rds"
+
+# 1. List of SCE
+## counts of pLN samples
+sln <- load_data_from_Box("https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds") # sce_integrated_pLNSamples_filtered.rds
+scel <- lapply(unique(sln$Sample), function(x){
+    out.sce <- sln[, sln$Sample == x]
+    assay(out.sce, "logcounts") <- NULL
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    rownames(out.sce)  <- rowData(out.sce)$ID
+    return(out.sce)
+})
+names(scel) <- unique(sln$Sample)
+
+## add Yao counts
+for(i in unique(sce.all$Sample)){
+    out.sce <- sce.all[, sce.all$Sample == i]
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    scel[[i]] <- out.sce}
+
+## filter genes
+rd_qc <- lapply(scel,perFeatureQCMetrics)
+for(x in seq_along(scel)){rowData(scel[[x]])$qc.mean <- rd_qc[[x]]$mean}
+scel2 <- lapply(scel, function(x){ x[rowData(x)$qc.mean > 0.001,]})
+## combine
+universe <- Reduce(intersect, lapply(scel2, rownames))
+scel2 <- lapply(scel2, "[", i=universe)
+# generate logcounts
+normed.sce <- do.call(multiBatchNorm, scel2) # returns a list
+# Identifying a set of HVGs using stats from all batches, using logcounts
+all.dec <- lapply(normed.sce, modelGeneVar)
+combined.dec <- do.call(combineVar, all.dec)
+combined.hvg <- getTopHVGs(combined.dec, n=2000)
+# Merge with MNN ----------------------------
+## prep
+combined <- noCorrect(normed.sce)
+assayNames(combined) <- "logcounts"
+combined$Sample <- combined$batch
+combined$batch <- NULL
+set.seed(1010100)
+## progressively merge cells from each sample in each batch until all cells 
+## are mapped onto a common coordinate space
+multiout <- fastMNN(combined, batch=combined$Sample, subset.row=combined.hvg)
+# Renaming metadata fields for easier communication later.
+multiout$Sample <- multiout$batch
+
+## UMAP----------------------------------
+set.seed(10101010)
+multiout <- runUMAP(multiout, dimred="corrected")
+
+## Clustering -----------------------------
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 20)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_Yao_k20 <- factor(clusters$membership)
+
+saveRDS(multiout,file = fnmerged)
+
+# generate composite file for the combined file of all shared genes ============
+## combine
+universe <- Reduce(intersect, lapply(scel, rownames))
+scel <- lapply(scel, "[", i=universe)
+comb.mat <- lapply(scel, function(x) counts(x)) %>% do.call(cbind, .)
+colnames(comb.mat) <- unlist(lapply(scel, function(x) colnames(x)))
+
+### rowData
+rd <- rowData(scel[[1]])[, c("ID","Symbol")]
+rd <- rd[rownames(comb.mat),]
+
+## colData 
+cd <- lapply(scel, function(x) colData(x)[, c("Sample","Barcode","cell")]) %>% do.call(rbind, .)
+cd <- cd[colnames(comb.mat),]
+
+scYaoUs <- SingleCellExperiment(
+    assays = list(counts = comb.mat), 
+    colData = cd, rowData = rd)
+
+## add redDims from the merged data set
+rdu <- reducedDim(multiout, "UMAP") 
+reducedDim(scYaoUs, "UMAP") <- rdu[colnames(scYaoUs),]
+reducedDim(scYaoUs, "PCA_corr") <- reducedDim(multiout, "corrected")
+
+## add log-counts
+qckclst <- quickCluster(scYaoUs, method = "igraph", min.mean = 0.1)
+scYaoUs <- computeSumFactors(scYaoUs, min.mean=0.1, cluster = qckclst)
+scYaoUs <- scater::logNormCounts(scYaoUs)
+
+saveRDS(scYaoUs, file = fnall)
+```

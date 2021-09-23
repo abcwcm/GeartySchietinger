@@ -1,0 +1,220 @@
+---
+title: "Schauder 2021 et al"
+author: "Friederike Dündar | ABC @ WCM"
+date: "August 2021"
+output: 
+    html_document:
+        toc: true
+        code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r cache=FALSE, message=FALSE}
+library(data.table); library(magrittr)
+library(ggplot2); theme_set(theme_bw(base_size = 14))
+library(patchwork)
+library(SingleCellExperiment)
+```
+
+>Schauder DM, Shen J, Chen Y, Kasmani MY et al. E2A-regulated epigenetic landscape promotes memory CD8 T cell differentiation. Proc Natl Acad Sci U S A 2021 Apr 20;118(16). PMID: 33859041
+
+[Schauder et al. (2021), PNAS](https://pubmed.ncbi.nlm.nih.gov/33859041/) published a study following the fate of CD8 T cells after **acute LCMV** infection.
+
+>Characterization of CD8 T cells during acute LCMV infection using scRNA-seq
+>During a viral infection, CD8 T cells encounter a myriad of antigenic and inflammatory signals of variable strength, which sets off each individual T cell on a unique differentiation trajectory. However, the developmental path for each of these cells will ultimately lead to one of only two potential outcomes after clearance of the infection—death or survival and development into memory CD8 T cells. How this cell fate decision is made remains incompletely understood. In this study, we explore the dynamic transcriptional changes during effector and memory CD8 T cell differentiation at the single cell level.
+
+--> day 129 should be predominantly central memory T cells
+
+## Data download
+
+Downloaded data for day 129 from [GEO](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM3732587).
+
+```
+wget "ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3732nnn/GSM3732587/suppl/GSM3732587%5FDay129%5Fbarcodes%2Etsv%2Egz" --no-check-certificate
+wget "ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3732nnn/GSM3732587/suppl/GSM3732587%5FDay129%5Fgenes%2Etsv%2Egz" --no-check-certificate
+wget "ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3732nnn/GSM3732587/suppl/GSM3732587%5FDay129%5Fmatrix%2Emtx%2Egz" --no-check-certificate
+
+## set up for DropletUtils read-in
+mkdir GSM3732587_Day129
+mv GSM3732587_Day129_barcodes.tsv.gz GSM3732587_Day129/barcodes.tsv.gz
+mv GSM3732587_Day129_genes.tsv.gz GSM3732587_Day129/genes.tsv.gz
+mv GSM3732587_Day129_matrix.mtx.gz GSM3732587_Day129/matrix.mtx.gz
+```
+
+## SCE generation
+
+```{r SCE_on_server, eval=FALSE}
+options(menu.graphics=FALSE)
+library(SingleCellExperiment)
+library(DropletUtils)
+library(scater)
+library(scran)
+library(magrittr)
+source("src/load_data_from_box.R")
+
+data_dir <- "2021-08_Schauder2021/data_from_GEO/"
+smpl <- "GSM3732587_Day129"
+
+sce.all <- DropletUtils::read10xCounts(
+        samples = paste0(data_dir, smpl,"/"),
+        sample.names = smpl,
+        version = "auto")
+
+## combine in one object
+sce.all <- SingleCellExperiment(
+    list(counts = full_data), 
+    rowData = gene_info,
+    colData = cell_info, 
+    metadata = list(Samples = names(scel))
+)
+
+## remove completely uncovered genes
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+#> dim(sce.all)
+#[1] 12502   578
+
+## add cellnames
+cellnames <- lapply(unique(sce.all$Sample), function(x){
+    tmp <- sce.all[, sce.all$Sample==x]
+    n_smp <- ncol(tmp)
+    outnames <- paste(x, c(1:n_smp),sep=".")
+    return(outnames)
+}) %>% unlist
+colnames(sce.all) <- cellnames
+
+## add QC info
+is.mito <- grepl("mt-", ignore.case = TRUE, rowData(sce.all)$Symbol)
+sce.all <- addPerCellQC(sce.all, subsets=list(mitochondrial=is.mito))
+
+mm <- lapply(unique(sce.all$Sample), function(x){
+        ss <- sce.all[, sce.all$Sample == x]$subsets_mitochondrial_percent
+        isOutlier(ss, type = "higher")})
+sce.all$mito.discard <- unlist(mm)
+sce.all$mito.discard <- ifelse(is.na(sce.all$mito.discard), FALSE, sce.all$mito.discard)
+
+## determine GENE count thresholds for each Sample individually
+gg <- lapply(unique(sce.all$Sample), function(x){
+    ss <- log10(sce.all[, sce.all$Sample == x]$detected)
+    isOutlier(ss)
+})
+sce.all$gene.discard <- unlist(gg)
+
+## save colData
+library(data.table)
+cd <-colData(sce.all) 
+cd$cell <- rownames(cd)
+cd <- as.data.frame(cd) %>% as.data.table
+saveRDS(cd, file = "colData_unfiltered_Schauder2021.rds")
+saveRDS(sce.all, file = "sce_unfiltered_Schauder2021.rds")
+
+## Filtering
+
+rm_cells <- unique(c(colnames(sce.all[,sce.all$gene.discard]), colnames(sce.all[, sce.all$mito.discard])))
+sce.all <- sce.all[, !colnames(sce.all) %in% rm_cells]
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+
+sce.all$cell <- colnames(sce.all)
+
+## Integration with our scRNA-seq data ===================================
+library(magrittr)
+library(batchelor)
+library(scran)
+library(scater)
+library(patchwork)
+
+fnall <- "sce_integrated_with_Schauder2021.rds"
+fnmerged <- "sceMultiout_integrated_with_Schauder2021.rds"
+
+# 1. List of SCE
+## counts of pLN samples
+sln <- load_data_from_Box("https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds") # sce_integrated_pLNSamples_filtered.rds
+rownames(sln) <- rowData(sln)$ID
+scel <- lapply(unique(sln$Sample), function(x){
+    out.sce <- sln[, sln$Sample == x]
+    assay(out.sce, "logcounts") <- NULL
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    rownames(out.sce)  <- rowData(out.sce)$ID
+    return(out.sce)
+})
+names(scel) <- unique(sln$Sample)
+
+## add Schauder counts
+for(i in unique(sce.all$Sample)){
+    out.sce <- sce.all[, sce.all$Sample == i]
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    scel[[i]] <- out.sce}
+
+## filter genes
+rd_qc <- lapply(scel,perFeatureQCMetrics)
+for(x in seq_along(scel)){rowData(scel[[x]])$qc.mean <- rd_qc[[x]]$mean}
+scel2 <- lapply(scel, function(x){ x[rowData(x)$qc.mean > 0.001,]})
+## combine
+universe <- Reduce(intersect, lapply(scel2, rownames))
+scel2 <- lapply(scel2, "[", i=universe)
+# generate logcounts
+normed.sce <- do.call(multiBatchNorm, scel2) # returns a list
+# Identifying a set of HVGs using stats from all batches, using logcounts
+all.dec <- lapply(normed.sce, modelGeneVar)
+combined.dec <- do.call(combineVar, all.dec)
+combined.hvg <- getTopHVGs(combined.dec, n=2000)
+# Merge with MNN ----------------------------
+## prep
+combined <- noCorrect(normed.sce)
+assayNames(combined) <- "logcounts"
+combined$Sample <- combined$batch
+combined$batch <- NULL
+set.seed(1010100)
+## progressively merge cells from each sample in each batch until all cells 
+## are mapped onto a common coordinate space
+multiout <- fastMNN(combined, batch=combined$Sample, subset.row=combined.hvg)
+# Renaming metadata fields for easier communication later.
+multiout$Sample <- multiout$batch
+
+## UMAP----------------------------------
+set.seed(10101010)
+multiout <- runUMAP(multiout, dimred="corrected")
+
+## Clustering -----------------------------
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 20)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_Schauder_k20 <- factor(clusters$membership)
+
+saveRDS(multiout,file = fnmerged)
+
+# generate composite file for the combined file of all shared genes ============
+## combine
+universe <- Reduce(intersect, lapply(scel, rownames))
+scel <- lapply(scel, "[", i=universe)
+comb.mat <- lapply(scel, function(x) counts(x)) %>% do.call(cbind, .)
+colnames(comb.mat) <- unlist(lapply(scel, function(x) colnames(x)))
+
+### rowData
+rd <- rowData(scel[[1]])[, c("ID","Symbol")]
+rd <- rd[rownames(comb.mat),]
+
+## colData 
+cd <- lapply(scel, function(x) colData(x)[, c("Sample","Barcode","cell")]) %>% do.call(rbind, .)
+cd <- cd[colnames(comb.mat),]
+
+scSchauUs <- SingleCellExperiment(
+    assays = list(counts = comb.mat), 
+    colData = cd, rowData = rd)
+
+## add redDims from the merged data set
+rdu <- reducedDim(multiout, "UMAP") 
+reducedDim(scSchauUs, "UMAP") <- rdu[colnames(scSchauUs),]
+reducedDim(scSchauUs, "PCA_corr") <- reducedDim(multiout, "corrected")
+
+## add log-counts
+qckclst <- quickCluster(scSchauUs, method = "igraph", min.mean = 0.1)
+scSchauUs <- computeSumFactors(scSchauUs, min.mean=0.1, cluster = qckclst)
+scSchauUs <- scater::logNormCounts(scSchauUs)
+
+saveRDS(scSchauUs, file = fnall)
+```
