@@ -1,3 +1,6 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5525867.svg)](https://doi.org/10.5281/zenodo.5525867)
+
+
 # Bioinformatic methods for Gearty et al. (2021)
 
 In Gearty et al. (2021) we describe CD8 T cell populations that contribute to the continuous destruction of pancreatic beta cells leading to type 1 diabetes.
