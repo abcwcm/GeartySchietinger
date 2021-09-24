@@ -69,6 +69,8 @@ The `TSCAN package (v.1.28.0)` was used to calculate pseudotime values and traje
 GO term enrichments were calculated with the `clusterProfiler` package's functions `compareCluster()` and `enrichGO()` after excluding ribosomal genes from the gene lists of interest.
 All plots were generated using `ggplot2` packages and the `pheatmap` package for heatmaps.
 
+For details, see [processing_scRNAseq.md](scRNAseq/processing_scRNAseq.md), [processingVDJseq.md](scRNAseq/processingVDJseq.md), [figures_scRNAseq.Rmd](scRNAseq/figures_scRNAseq.Rmd) and [figures_VDJseq.Rmd](scRNAseeq/figures_VDJseq.Rmd).
+
 ## Integration with public scRNA-seq data sets
 
 Gene count matrices for day 7 CD8 T cells from acute and chronic infection were obtained from GEO (GSE119940); using cell labels provided by Chen Yao we extracted the data for barcodes corresponding to memory precursor and memory-like cells as described in Yao et al. (2019).
@@ -77,6 +79,8 @@ scRNA-seq of Tcms, MPECS, and Tpex were subsequently integrated with the pLN dat
 For global comparisons of the different populations of T cells, we created pseudo-bulk samples by aggregating the read counts per gene across cells of the same population.
 These were then cpm-normalized via `edgeR::calcNormFactors` (Robinson 2010) and subsequently analyzed and visualized via PCA and hierarchical clustering using base R functions as well as `pcaExplorer::hi_loadings()` and the `dendextend` package (Marini 2019, Galili 2015).
 All other analyses were done with the same principles and packages as described above.
+
+For details see [Schauder2021.Rmd](scRNAseq/Schauder2021.Rmd), [Yao2019.Rmd](scRNAseq/Yao2019.Rmd), [figures_public_scRNAseq.Rmd](scRNAseq/figures_public_scRNAseq.Rmd) and the corresponding PDF/HTML files.
 
 ## References
 
@@ -135,7 +139,7 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 The raw data (fastq files, read counts from CellRanger) can be downloaded from GEO (GSE151652).
 
 For the single-cell data, some of the data can be downloaded from Box in the form of RDS (load into R via `in_data <- readRDS()`) or RDA objects (load into R via `load()`).
-The `data/` directory in the scRNA-seq section contains some text files that contain just the cell labels and the mouse labels for individual cells.
+The `data/` directory in the scRNA-seq directory contains some text files that contain just the cell labels and the mouse labels for individual cells.
 
 | File_name |	Robject_type	| Details |
 |--------------|-------------|------------|
