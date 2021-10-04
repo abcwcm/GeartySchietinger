@@ -108,6 +108,9 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 
 ## Package versions
 
+- STAR v2.6.0c
+- CellRanger v.5.0.0 with mm10-2020-A
+
 >R version 4.0.3 (2020-10-10)
 
 - AnnotationDbi_1.50.3 
@@ -134,7 +137,6 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 - scater_1.18.0
 - scuttle_1.0.0
 - SingleCellExperiment_1.12.0
-- STAR v2.6.0c
 - SummarizedExperiment_1.20.0
 - scran_1.18.0
 
