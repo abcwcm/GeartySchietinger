@@ -123,6 +123,7 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 - fgsea v1.12.0 
 - GenomeInfoDb_1.26.0 
 - GenomeInfoDbData_1.2.4
+- ggalluvial_0.12.3
 - ggplot2_3.3.3
 - GOstats_2.54.0
 - igraph_1.2.6
