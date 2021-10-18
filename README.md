@@ -97,8 +97,7 @@ by matching mutual nearest neighbors." _Nat. Biotechnol._, *36*(5), 421-427. <ht
     - Lun, Aaron. Further MNN algorithm development. 2018. https://MarioniLab.github.io/FurtherMNN2018/theory/description.html
 * **clustering etc**: Lun ATL, McCarthy DJ, Marioni JC (2016). "A step-by-step workflow for low-level analysis of single-cell RNA-seq data
 with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000research.9501>
-* **destiny**: Philipp Angerer et al. (2015): destiny: diffusion maps for large-scale single-cell data in R. Helmholtz-Zentrum München. URL:
-  <http://bioinformatics.oxfordjournals.org/content/32/8/1241>.
+* **destiny**: Angerer, P., Haghverdi, L., Büttner, M., Theis, F. J., Marr, C., & Buettner, F. (2016). Destiny: Diffusion maps for large-scale single-cell data in R. Bioinformatics, 3(8), 1241–1243. <https://doi.org/10.1093/bioinformatics/btv715>.
 * **TSCAN**: Zhicheng Ji, Hongkai Ji, TSCAN: Pseudo-time reconstruction and evaluation in single-cell RNA-seq analysis, _Nucleic Acids Research_, Volume 44, Issue 13, 27 July 2016, Page e117, <https://doi.org/10.1093/nar/gkw430>
 * Galili, Tal (2015). dendextend: an R package for visualizing, adjusting, and comparing trees of hierarchical clustering. Bioinformatics. DOI: 10.1093/bioinformatics/btv428
 * Marini, Federico and Binder, Harald (2019). pcaExplorer: an R/Bioconductor package for interacting with RNA-seq principal components. doi: 10.1186/s12859-019-2879-1
