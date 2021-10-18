@@ -1,0 +1,405 @@
+---
+title: "Combining our data with Schauder's Tcm and Yao's progLikes and MPECs"
+author: "Friederike Dündar | ABC @ WCM"
+date: "August 2021"
+output:
+    html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r cache=FALSE, message=FALSE}
+library(data.table); library(magrittr)
+library(ggplot2); theme_set(theme_bw(base_size = 14))
+library(patchwork)
+library(SingleCellExperiment)
+library(pcaExplorer); library(org.Mm.eg.db)
+source("src/marker_gene_extract_and_plot.R")
+source("src/load_data_from_box.R")
+library(pheatmap)
+library(org.Mm.eg.db); library(clusterProfiler)
+```
+
+## Integrating data sets
+
+* Yao et al (2019): day 7 CD8 T cells from acute (`Arm`) and chronic (`Cl13`) infection
+    - will focus on the memory precursors and progenitor-like cells (which are from repl. 1 only)
+* Schauder et al (2021): day 129 following acute infection
+
+For details of how we retrieved the public data sets, see `Schauder2021.Rmd` and `Yao2019.Rmd`.
+
+```{r integration, eval=FALSE}
+## Code here does not need to be executed, it's simply for documentation purposes
+## to show the details of how we generated the composite integrated file that
+## we're providing for download
+library(magrittr)
+library(batchelor)
+library(scran)
+library(scater)
+library(patchwork)
+
+fnall <- "sce_integrated_with_YaoProgsMpecs-and-Schauder.rds"
+fnmerged <- "sceMultiout_integrated_with_YaoProgsMpecs-and-Schauder.rds"
+
+## MAKE A LIST of INDIVIDUAL SCEs ==============================================
+## our data -------------
+sln <- load_data_from_Box("https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds") 
+rownames(sln) <- rowData(sln)$ID
+scel <- lapply(unique(sln$Sample), function(x){
+    out.sce <- sln[, sln$Sample == x]
+    assay(out.sce, "logcounts") <- NULL
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    rownames(out.sce)  <- rowData(out.sce)$ID
+    return(out.sce)
+})
+names(scel) <- unique(sln$Sample)
+
+## Schauder -------------
+scs <- readRDS("../2021-08_Schauder2021/sce_integrated_with_Schauder2021.rds")
+assay(scs, "logcounts") <- NULL
+scs <- scs[,!grepl("^pLN",scs$Sample)]
+colData(scs) <- colData(scs)[, c("Sample","Barcode","cell")]
+rownames(scs)  <- rowData(scs)$ID
+scel$Schauder <- scs
+
+## Yao -------------
+scy <- readRDS("../2021-08_Yao2019/sce_integrated_with_Yao2019.rds")
+assay(scy, "logcounts") <- NULL
+scy <- scy[,!grepl("^pLN",scy$Sample)]
+
+yaolabs <- read.table("../2021-08_Yao2019/Yao2019_metadata.txt", header = FALSE, skip = 1)
+names(yaolabs) <-  c("YaoCell","nGene","nUMI","orig.ident","percent.mito","res.0.5","res.1","res.1.5")
+## res.0.5 = clusters; 10 = progs, 7 = MPecs
+kp_cells <- subset(yaolabs, res.0.5 %in% c(10, 7)) %>% .$YaoCell
+scy$YaoCell <- paste(gsub("_[12]$", "", scy$Sample), gsub("-[0-9]$","", scy$Barcode), sep = "_")
+
+for(i in unique(scy$Sample)){
+    out.sce <- scy[, scy$Sample == i]
+    out.sce <- out.sce[, out.sce$YaoCell %in% kp_cells]
+    colData(out.sce) <- colData(out.sce)[, c("Sample","Barcode","cell")]
+    rownames(out.sce)  <- rowData(out.sce)$ID
+    scel[[i]] <- out.sce}
+
+## PREPPING ============================================================
+rd_qc <- lapply(scel,perFeatureQCMetrics)
+for(x in seq_along(scel)){rowData(scel[[x]])$qc.mean <- rd_qc[[x]]$mean}
+scel2 <- lapply(scel, function(x){ x[rowData(x)$qc.mean > 0.001,]})
+## combine
+universe <- Reduce(intersect, lapply(scel2, rownames))
+scel2 <- lapply(scel2, "[", i=universe)
+# generate logcounts
+normed.sce <- do.call(multiBatchNorm, scel2) # returns a list
+# Identifying a set of HVGs using stats from all batches, using logcounts
+all.dec <- lapply(normed.sce, modelGeneVar)
+combined.dec <- do.call(combineVar, all.dec)
+combined.hvg <- getTopHVGs(combined.dec, n=2000)
+
+## MERGING with MNN ====================================================
+## prep
+combined <- noCorrect(normed.sce)
+assayNames(combined) <- "logcounts"
+combined$Sample <- combined$batch
+combined$batch <- NULL
+set.seed(1010100)
+## progressively merge cells from each sample in each batch until all cells 
+## are mapped onto a common coordinate space
+multiout <- fastMNN(combined, batch=combined$Sample, subset.row=combined.hvg)
+# Renaming metadata fields for easier communication later.
+multiout$Sample <- multiout$batch
+
+## UMAP----------------------------------
+set.seed(10101010)
+multiout <- runUMAP(multiout, dimred="corrected")
+
+## Clustering -----------------------------
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 20)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_SchauderYao_k20 <- factor(clusters$membership)
+
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 50)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_SchauderYao_k50 <- factor(clusters$membership)
+
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 10)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_SchauderYao_k10 <- factor(clusters$membership)
+
+g <- buildSNNGraph(multiout, use.dimred="corrected", k = 5)
+clusters <- igraph::cluster_louvain(g)
+multiout$cluster_with_SchauderYao_k5 <- factor(clusters$membership)
+
+saveRDS(multiout,file = fnmerged)
+
+# generate composite file for the combined file of all shared genes ============
+## combine
+universe <- Reduce(intersect, lapply(scel, rownames))
+scel <- lapply(scel, "[", i=universe)
+comb.mat <- lapply(scel, function(x) counts(x)) %>% do.call(cbind, .)
+colnames(comb.mat) <- unlist(lapply(scel, function(x) colnames(x)))
+
+### rowData
+rd <- rowData(scel[[1]])[, c("ID","Symbol")]
+rd <- rd[rownames(comb.mat),]
+
+## colData 
+cd <- lapply(scel, function(x) colData(x)[, c("Sample","Barcode","cell")]) %>% do.call(rbind, .)
+cd <- cd[colnames(comb.mat),]
+
+scAll <- SingleCellExperiment(
+    assays = list(counts = comb.mat), 
+    colData = cd, rowData = rd)
+
+## add redDims from the merged data set
+rdu <- reducedDim(multiout, "UMAP") 
+reducedDim(scAll, "UMAP") <- rdu[colnames(scAll),]
+reducedDim(scAll, "PCA_corr") <- reducedDim(multiout, "corrected")
+
+## add log-counts
+qckclst <- quickCluster(scAll, method = "igraph", min.mean = 0.1)
+scAll <- computeSumFactors(scAll, min.mean=0.1, cluster = qckclst)
+scAll <- scater::logNormCounts(scAll)
+
+saveRDS(scAll, file = fnall)
+colData(multiout) %>% saveRDS("colData_multiout_YaoProgsMpecs-and-Schauder.rds")
+
+## fix ColData ======================================================
+cd2 <- colData(multiout)
+cd2 <- as.data.frame(cd2)
+cd2$cell <- rownames(cd2)
+cd2 <- cd2[, c("cell",grep("cluster", names(cd2), value=TRUE))]
+newcd <- merge(colData(scAll), cd2, by = "cell") 
+
+## add YAO LABELS -----------------------------------------------
+newcd$YaoCell <- paste(gsub("_[12]$", "", newcd$Sample), gsub("-[0-9]$","", newcd$Barcode), sep = "_")
+newcd <- merge(newcd, yaolabs, by="YaoCell", all.x = TRUE)
+
+## add OUR LABELS ------------------------------------------------
+cdus <- colData(sln)
+newcd <- cdus[, c("cell","CD62L","label")] %>% as.data.frame %>% 
+    merge(newcd, ., on = "cell", all.x = TRUE)
+newcd$label <- ifelse(!is.na(newcd$label), newcd$label,
+    ifelse(grepl("GSM3732587", newcd$Sample), "Schauder",
+        ifelse(grepl("^D", newcd$Sample),  paste0("Yao_", gsub("_1$", "", gsub("_P14","",newcd$Sample))),
+            "no.clue")))
+## 10 = progs, 7 = MPecs
+newcd$label2 <- ifelse(is.na(newcd$res.0.5), newcd$label,
+    ifelse(newcd$res.0.5 == 10, "ProgLike", 
+        ifelse(newcd$res.0.5 == 7, paste(newcd$label, "MPECS", sep = "_"), "no.clue")))
+newcd$label2 <- ifelse(newcd$label2 == "Schauder", "Tcm", newcd$label2)
+
+#> table(newcd$label2)
+#             AIC               AMC          ProgLike               Tcm 
+#             1704              1335               114               535 
+#       transition  Yao_D7_Arm_MPECS Yao_D7_Cl13_MPECS 
+#             2016               386                 2 
+
+
+## finalize colData
+rownames(newcd) <- newcd$cell
+colData(scAll) <- newcd[colnames(scAll),]
+
+## adjust the naming scheme for our populations
+scAll$label <- ifelse(scAll$label == "AIC","AP", ifelse(scAll$label == "transition", "intermediate", ifelse(scAll$label == "AMC", "AM", scAll$label)))
+scAll$label2 <- ifelse(scAll$label2 == "AIC","AP", ifelse(scAll$label2 == "transition", "intermediate", ifelse(scAll$label2 == "AMC", "AM", scAll$label2)))
+## remove the lonely two cells classified as D7-Cl13-MPECS
+scAll <- scAll[, scAll$label2 != "Yao_D7_Cl13_MPECS"]
+scAll$label2 <- gsub("Yao_D7_Arm_", "", scAll$label2)
+scAll$label2 <- factor(scAll$label2, levels = c("AP","intermediate","AM","MPECS","ProgLike", "Tcm"), ordered = TRUE)
+scAll$Ref <- ifelse(grepl("Yao",scAll$label), "Yao", ifelse(grepl("Schauder", scAll$label), "Schauder", "Gearty"))
+
+
+rownames(scAll) <- scater::uniquifyFeatureNames(ID = rowData(scAll)$ID, 
+    names = rowData(scAll)$Symbol)
+
+saveRDS(scAll, file = fnall)
+```
+
+```{r load_data}
+sc3 <- load_RDSdata_from_Box(shared_link = "https://wcm.box.com/shared/static/ixtkzzow5b4r2ck3u6zit2jtep7dunzv.rds")
+```
+
+```{r define_colors}
+## define color schemes ---------------------------------------------------------
+popcols <- c("#1E498F", "#629DD4","#5E3DD8", # dark blue, light blue, intermediate blue
+    "#228B22", #"bisque1",
+    "#9ED9B9",#"lightpink1", 
+    "maroon1") 
+names(popcols) <- c("AP","intermediate","AM", 
+    "Tcm",
+    "MPECS","ProgLike")
+
+sample_cols <- c(
+    "D7_P14_Cl13_1" = "sienna4", "D7_P14_Arm_1"="sienna2",
+    "GSM3732587_Day129"="wheat3",
+    "pLN_1"="blue","pLN_2"="dodgerblue1","pLN_3"="lightskyblue")
+
+
+cluster_cols <- c('#B1E2F9','limegreen','grey30','#FFC914','#0066E2','#FC71E9','#00E5CA','#E31A1C','grey83','#FF7F00','#378C07','#6A3D9A','#FFFF99','#B15928')
+names(cluster_cols) <- sort(unique(sc3$cluster_with_SchauderYao_k20))
+cluster_cols <- cluster_cols[sort(unique(sc3$cluster_with_SchauderYao_k20))]
+```
+
+## Global comparisons 
+
+We can pretend that the individual cell types of interest are pseudo-bulk samples,
+i.e. we can sum up the reads across all cells of the same label-sample combination
+(e.g. all cells from Sample "pLN_1" that are labelled as "AP" will form one pseudo-bulk
+sample "pLN_1_AP").
+This helps us to apply more robust bulk-RNA-seq methods for global comparisons across the samples.
+
+```{r message=FALSE}
+summed.scf <- scater::aggregateAcrossCells(sc3,
+    ids=colData(sc3)[,c("label2","Sample")])
+library(edgeR)
+y <- DGEList(counts(summed.scf), samples=colData(summed.scf))
+keep <- filterByExpr(y, group=summed.scf$Sample)
+y <- y[keep,]
+y <- calcNormFactors(y)
+```
+
+### PCA
+
+```{r PCA, fig.width = 15, fig.height = 8}
+PCA <- prcomp(t(cpm(y, log = TRUE)), scale = F)
+percentVar <- round(100*PCA$sdev^2/sum(PCA$sdev^2),1)
+dataGG = data.frame(PC1 = PCA$x[,1],PC2 = PCA$x[,2], 
+    PC3 = PCA$x[,3],PC4 = PCA$x[,4],
+    sampleName = row.names(y$samples),
+    y$samples)
+dataGG$MySampleName <- paste(dataGG$Sample.1, dataGG$label2.1, sep = "_")
+
+p1 <- ggplot(dataGG, aes(x = PC1, y = PC2, fill = label2.1, shape = Ref)) +
+    geom_point(size = 8,  alpha = .85) +
+    xlab(paste0("PC1, VarExp:", round(percentVar[1],4))) +
+    ylab(paste0("PC2, VarExp:", round(percentVar[2],4))) +
+    scale_fill_manual(values = popcols, name = "") + 
+    scale_shape_manual(values = c(21,22,23), name = "") +
+   theme(legend.position = "bottom")
+
+p2 <- ggplot(dataGG, aes(x = PC1, y = PC2, color = label2.1, label = MySampleName)) +
+    geom_text(size = 6) + scale_color_manual(values = popcols) +
+    theme(legend.position = "none")
+
+p1 | p2
+```
+
+```{r pca_loadings, message=FALSE, warning=FALSE, eval=TRUE, fig.width=10, fig.height=6.5, context="data"}
+par(mfrow=c(2,1))
+hi_loadings(PCA,whichpc = as.integer(1),topN = 20)
+hi_loadings(PCA,whichpc = as.integer(2),topN = 20)
+```
+
+
+```{r hclusting, fig.height=8, fig.width = 10}
+hc <- hclust( as.dist(1-cor(cpm(y, log = TRUE))), method="complete")
+hc$labels <- dataGG$MySampleName
+#plot(hc)
+```
+
+```{r hclust_mod, fig.height = 4.5, fig.width =7, message=FALSE}
+library(dendextend)
+dend <- as.dendrogram(hc)
+labels_colors(dend) <- c(rep(popcols[["AP"]], 3), popcols[["AM"]], rep(popcols[["intermediate"]], 3), rep(popcols[["AM"]], 2), popcols[["Tcm"]], popcols[["MPECS"]], popcols[["ProgLike"]])
+
+par(mar=c(15,4,4,2))
+rotate(dend, c( 'pLN_1_AP', 'pLN_3_AP', 'pLN_4_AP', 'pLN_1_intermediate', 'pLN_3_intermediate', 'pLN_4_intermediate', 'pLN_1_AM', 'pLN_3_AM', 'pLN_4_AM', 'D7_P14_Arm_1_MPECS', 'D7_P14_Cl13_1_ProgLike','GSM3732587_Day129_Tcm')) %>% plot
+```
+
+
+## Single-cell level: markers distinguishing the populations
+
+>comparing AP vs ProgLike vs Tcm and so on
+
+Taking all genes that are either up- or down in any one of the populations (FDR <= 1%) and that are at least in the top 50 for each population.
+
+```{r marker_gene_detection_pops, message=FALSE, cache=FALSE}
+LabelMarkers <- scran::findMarkers(sc3,
+    group = sc3$label2)
+
+goi <- lapply(LabelMarkers, function(x) rownames(subset(as.data.frame(x), FDR <= 0.01 & Top <= 50))) %>% unlist %>% unique
+```
+
+```{r fig.height = 20, fig.width = 12}
+## with Tcf7 as a color bar 
+plot_marker_heatmap(sc3, 
+    gns=unique(c("Tox",goi)), 
+    gns_as_cellAnnotation = c("Tcf7","Tox"), exclude_genes = "Tox",
+    exprs_values = "logcounts",
+    show_HKgenes = "both",
+    n_quant_breaks = 300,
+   scale="row",col_palette = c("mediumorchid","black","yellow"),
+    fontsize_row = 7,
+  add_cell_annotation = data.frame(
+        row.names = colnames(sc3),
+        #cluster = sc3$cluster_with_SchauderYao_k20,
+        population = sc3$label2),
+    define_anno_cols = list(
+        #cluster = cluster_cols,
+        population = popcols,
+        Tox = scales::brewer_pal("seq", "Reds")(5)[1:4],
+        Tcf7 = scales::brewer_pal("seq", "Reds")(5)[1:4]),
+    main = "Marker genes of the individual populations\n(FDR 1%, Rank <= 50)"
+    )
+```
+
+### GO term enrichments
+
+Determining the top enriched GO terms for markers that are specifically overexpressed in the different populations.
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+## marker genes
+cm.up <- scran::findMarkers(sc3,
+    group = sc3$label2, direction = "up")
+mks.up <- extract_markers(sc3, 
+    marker_search_result = cm.up, FDR_thresh = 0.01,
+    rank_thresh = 300)
+
+## get ENTREZ IDs
+all.entrez <-  clusterProfiler::bitr(rownames(sc3), 
+    fromType="SYMBOL", toType="ENTREZID",
+    OrgDb="org.Mm.eg.db") %>%  as.data.table
+setnames(all.entrez, names(all.entrez), c("gene_symbol", "entrez"))
+
+## generate list of ENTREZ IDs of interest
+eg <- all.entrez[mks.up, on = "gene_symbol"]
+## focus on those that are UP and UNIQUELY so per population
+clstcomp.list <- lapply(names(cm.up), function(x) eg[up_in == x & classify == "unique"]$entrez )
+names(clstcomp.list) <- names(cm.up)
+```
+
+```{r gobp_cluster_comparison, eval=FALSE}
+cc.gobp <- compareCluster(clstcomp.list, fun = "enrichGO", OrgDb = org.Mm.eg.db,
+    ont = "BP", pvalueCutoff=0.05, readable=TRUE, universe = all.entrez$entrez)
+```
+```{r include=FALSE}
+load("YaoSchauderGearty_markerGenes_GOBP.rda")
+```
+
+```{r fig.width = 10, fig.height = 7, message=FALSE, warning=FALSE}
+## visualization
+dotplot(cc.gobp, showCategory = 10) +
+    ggtitle("Overrepresented GO BP terms for markers that are\nuniquely upregulated in either population") + 
+     scale_color_gradientn(colours =rev(c("azure2", "darkseagreen1", "seagreen2","forestgreen")), limits = c(0, 0.05))
+```
+
+- geneRatio should be number of genes that overlap gene set divided by size of gene set
+
+Here are some of the top enriched GO terms in detail:
+
+```{r fig.width = 15, fig.height = 15}
+cnetplot(cc.gobp) + scale_fill_manual(values = popcols, name = "")
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
