@@ -145,12 +145,12 @@ The raw data (fastq files, read counts from CellRanger) can be downloaded from G
 
 There are multiple data set types per sample:
 
-* draining pancreatic lymph node (pLN) - three technical replicates (pLN_1, pLN_3, pLN_4)
+* **draining pancreatic lymph node** (pLN) - three technical replicates (pLN_1, pLN_3, pLN_4)
     * single-cell expression values (barcodes, features, matrix)
     * hash-tagged oligos to mark which individual mouse a given barcode/cell belongs to (see [mouse_per_cell.csv](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/mouse_per_cell.csv) for the processed file; [samples_Gearty_singleCell_hashtagBarcodes.csv](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/samples_Gearty_singleCell_hashtagBarcodes.csv) contains the actual HTO barcodes)
     * tagged antibodies (ADT) against CD44, CD62L, CD127, CD73, PD-1, CD38, CD39 (see (ADTBarcodes.csv)[https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/ADTBarcodes.csv])
     * V(D)J sequencing 
-* pancreas - three technical replicates (pLN_1, pLN_3, pLN_4)
+* **pancreas** - three technical replicates (panc_1, panc_3, panc_4)
     * hash-tagged oligos 
     * V(D)J sequencing
 
