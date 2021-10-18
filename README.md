@@ -143,6 +143,19 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 
 The raw data (fastq files, read counts from CellRanger) can be downloaded from GEO (GSE151652).
 
+There are multiple data set types per sample:
+
+* draining pancreatic lymph node (pLN) - three technical replicates (pLN_1, pLN_3, pLN_4)
+    * single-cell expression values (barcodes, features, matrix)
+    * hash-tagged oligos to mark which individual mouse a given barcode/cell belongs to (see [mouse_per_cell.csv](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/mouse_per_cell.csv) for the processed file; [samples_Gearty_singleCell_hashtagBarcodes.csv](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/samples_Gearty_singleCell_hashtagBarcodes.csv) contains the actual HTO barcodes)
+    * tagged antibodies (ADT) against CD44, CD62L, CD127, CD73, PD-1, CD38, CD39 (see (ADTBarcodes.csv)[https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/ADTBarcodes.csv])
+    * V(D)J sequencing 
+* pancreas - three technical replicates (pLN_1, pLN_3, pLN_4)
+    * hash-tagged oligos 
+    * V(D)J sequencing
+
+See below for more processed files that can be used somewhat out of the box to recreate figures from the paper.
+
 For the single-cell data, some of the data can be downloaded from Box in the form of RDS (load into R via `in_data <- readRDS()`) or RDA objects (load into R via `load()`).
 The `data/` directory in the scRNA-seq directory contains some text files that contain just the cell labels and the mouse labels for individual cells.
 
