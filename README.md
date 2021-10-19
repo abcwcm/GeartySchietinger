@@ -7,7 +7,7 @@ In Gearty et al. (2021) we describe CD8 T cell populations that contribute to th
 The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T cells from murine pancreatic lymph nodes (pLN) and pancreas as well as single-cell RNA-seq data coupled with antibody-derived tags (CITE-seq) and single-cell TCR sequencing.
 
 * [Bulk RNA-seq](#bulk-rna-seq)
-* [single-cell VDJ and CITE-seq processing](#scvdj-and-scrna-seq-data-processing)
+* [Single-cell VDJ and CITE-seq data processing](#scvdj-and-scrna-seq-data-processing)
 * [Integration of public scRNA-seq data sets](#integration-with-public-scRNA-seq-data-sets)
 * [References](#references)
 * [Software versions](#package-versions)
@@ -53,6 +53,7 @@ In principle, we followed the ideas and workflows discussed by Amezquita et al. 
 Female NOD mice aged 13-20 weeks were used. Samples were prepared as described above for RNA-seq, except before pooling samples were incubated with hashtags (Biolegend Total-Seq C0301-10) to enable multiplexing.
 Samples were stained with NRP-V7 tetramer, Live/dead Zombie dye, and antibodies against CD8alpha and CD45.1; in addition, Biolegend feature barcoding antibodies against CD44, CD62L, CD127, CD73, PD1, CD38, and CD39 were added for CITE-seq analysis. 
 2,000-16,000 cells were sorted into PBS+0.04% BSA, immediately analyzed for viability, and processed. 
+For details of the library preparation, see [`wetLabPrep_details.md`](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/wetLabPrep_details.md).
 
 ### Processing and analysis
 
