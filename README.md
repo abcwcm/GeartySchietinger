@@ -143,8 +143,10 @@ with Bioconductor." _F1000Res._, *5*, 2122. <https://doi.org/10.12688/f1000resea
 ## Data for download
 
 The raw data (fastq files, read counts from CellRanger) can be downloaded from GEO (GSE151652).
+Single-cell data are stored under accession no. GSM5641677 through GSM5641682.
+The remaining samples are bulk RNA-seq.
 
-There are multiple data set types per sample:
+For the single-cell data, there are multiple data set types per sample:
 
 * **draining pancreatic lymph node** (pLN) - three technical replicates (pLN_1, pLN_3, pLN_4)
     * single-cell expression values (barcodes, features, matrix)
@@ -155,7 +157,7 @@ There are multiple data set types per sample:
     * hash-tagged oligos 
     * V(D)J sequencing
 
-See below for more processed files that can be used somewhat out of the box to recreate figures from the paper.
+>The easiest way to get started is to use the processed data provided here.
 
 For the single-cell data, some of the data can be downloaded from Box in the form of RDS (load into R via `in_data <- readRDS()`) or RDA objects (load into R via `load()`).
 The `data/` directory in the scRNA-seq directory contains some text files that contain just the cell labels and the mouse labels for individual cells.
