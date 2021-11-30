@@ -3,6 +3,8 @@
 
 # Bioinformatic methods for Gearty et al. (2021)
 
+>Gearty, S.V., Dündar, F., Zumbo, P. et al. An autoimmune stem-like CD8 T cell population drives type 1 diabetes. Nature (2021). https://doi.org/10.1038/s41586-021-04248-x
+
 In Gearty et al. (2021) we describe CD8 T cell populations that contribute to the continuous destruction of pancreatic beta cells leading to type 1 diabetes.
 The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T cells from murine pancreatic lymph nodes (pLN) and pancreas as well as single-cell RNA-seq data coupled with antibody-derived tags (CITE-seq) and single-cell TCR sequencing.
 
