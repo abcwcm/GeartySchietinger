@@ -15,7 +15,7 @@ The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T
 * [Software versions](#package-versions)
 * [Data for download](#data-for-download)
 
-All scripts were written by Paul Zumbo and Friederike Dündar.
+All scripts were written by Paul Zumbo (bulk) and Friederike Dündar (single-cell).
 Samples were prepared by Sofia Gearty and the sequencing facilities at MSKCC and Weill Cornell Medicine.
 Don't hesitate to [get in touch](https://abc.med.cornell.edu/) with questions related to the code.
 
