@@ -16,7 +16,7 @@ The following code chunk shows how we:
     * `HTO`: varying numbers of **hash tags** (`HT0[1-9]`) marking the mice from which a cell originated
 - removed HTO-based doublets (detected with `CiteFuse`).
 
-```
+```r
 library(SingleCellExperiment)
 library(magrittr);
 data_dir <- "Sofia_CITEseq/data/"
@@ -194,7 +194,7 @@ As a reminder, these were the types of cells that were removed in the following 
 - removed B cells,
 - removed two small clusters of cells with high G1 scores and elevated numbers of genes compared to all other cells
 
-```{r integration_of_filtered_cells, eval=FALSE}
+```r
 library(magrittr)
 library(batchelor)
 library(scran)
