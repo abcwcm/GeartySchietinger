@@ -259,11 +259,6 @@ mks.up <- scABC2::extract_markers(sln,
 mks.up <- mks.up[!grepl("Rp[sl]", gene_symbol)]
 ```
 
-```{r eval=FALSE}
-clust.markers.up.df <- lapply(clust.markers.up, as.data.frame)
-openxlsx::write.xlsx(clust.markers.up.df, file = "~/Documents/Projects/2019-03_Sofia_SchietingerLab/CITEseq/data/cluster_genes_UP_panc-and-pLN_2021-04-12.xlsx",rowNames = TRUE)
-```
-
 ```{r results='asis',eval=FALSE}
 mks.up[classify == "unique"] %>% ABCutilities::my_table(.)
 ```
