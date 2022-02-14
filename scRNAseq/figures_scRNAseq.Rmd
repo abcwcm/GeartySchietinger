@@ -20,7 +20,7 @@ library(ggplot2); theme_set(theme_bw(base_size = 14))
 library(patchwork)
 source("src/utils_SCE.R")
 source("src/load_data_from_box.R")
-library(scABC2) # scABC2_0.3.3
+linrary("src/marker_gene_extract_and_plot.R")
 library(clusterProfiler)
 ```
 
@@ -29,11 +29,11 @@ The data was obtained from three technical replicates (`Sample`): "pLN_1", "pLN_
 Each of the experiments had CD8 T cells from multiple mice, whose identity was derived via antibody-based sample tagging and can be found in the `SingleCellExperiment`'s `colData` (meta data) via the `Mouse` entry.
 CD44, CD62L etc. correspond to the normalized CITE-seq values for the respective antibodies
 
-The SingleCellExperiment object and all other Robjects needed to recreate this document are stored in the Box; the [BiocFileCache package](https://bioconductor.org/packages/release/bioc/html/BiocFileCache.html) must be installed to make use of that.
+The SingleCellExperiment object and all other Robjects needed to recreate this document are stored in the Box; the [BiocFileCache package](https://bioconductor.org/packages/release/bioc/html/BiocFileCache.html) must be installed to make use of the `load_RDSdata_fromBox()` function. Otherwise, just download the RDS object directly and use `readRDS()`.
 
 ```{r load_SCE, echo=TRUE, message=TRUE}
 fls <- fread("data/data_links.txt", header=TRUE)
-sln <-  fls[File_name == "sce_integrated_pLNSamples_filtered.rds"]$Direct_link
+sln <-  load_RDSdata_from_Box(shared_link = fls[File_name == "sce_integrated_pLNSamples_filtered.rds"]$Direct_link)
 sln
 ```
 ```{r define_colors}
@@ -99,7 +99,7 @@ p1 + p2 + p3 + plot_layout(widths = c(1,4,4))
 ```{r}
 ## loads an object named line.data that contains the results of the TSCAN
 ## run to determin pseudotimes and trajectories
-load_data_from_Box(fls[object == "tscan"]$link, load_rds = FALSE)
+load_data_from_Box(fls[File_name == "tscan_lineData_DiffMap.rda"]$Direct_link, load_rds = FALSE)
 ```
 
 ```{r diffMap_trajectory,fig.width = 9, cache=FALSE}
@@ -181,7 +181,7 @@ p4 <- plot_reducedDim_from_sce(sln, color_by = "Tcf7",
 
 ```{r expression_along_pseudotime, message=FALSE, fig.width = 7, fig.height = 3}
 for(GN in c("Tcf7","Sell","Entpd1","Pdcd1","Lef1")){
-    tt <- scABC2::make_long_dt(sln, features = GN,
+    tt <- make_long_dt(sln, features = GN,
         exprs_values = "logcounts",
         include_metaData = c("Mouse","population","TSCANAMC"))
  P <- ggplot(tt, aes(x = TSCANAMC, y = logcounts)) +
@@ -204,7 +204,7 @@ for(GN in c("Tcf7","Sell","Entpd1","Pdcd1","Lef1")){
 clust.markers <- scran::findMarkers(sln,
     block=sln$Sample, group = sln$population)
 
-mks <- scABC2::extract_markers(sln, 
+mks <- extract_markers(sln, 
     marker_search_result = clust.markers, FDR_thresh = 0.05,
     rank_thresh = 50, comp_name = "k40_allSampls_")
 mks <- mks[!grepl("Rp[sl]", gene_symbol)]
@@ -253,14 +253,15 @@ We can focus the marker detection to those that go up in an individual cluster.
 clust.markers.up <- scran::findMarkers(sln,direction="up",
     block=sln$Sample, group = sln$population,)
 
-mks.up <- scABC2::extract_markers(sln, 
+mks.up <- extract_markers(sln, 
     marker_search_result = clust.markers.up, FDR_thresh = 0.05,
     rank_thresh = 50, comp_name = "k40_allSampls_up_")
 mks.up <- mks.up[!grepl("Rp[sl]", gene_symbol)]
 ```
 
 ```{r results='asis',eval=FALSE}
-mks.up[classify == "unique"] %>% ABCutilities::my_table(.)
+mks.up[classify == "unique"] %>% as.data.frame %>% kable(., row.names = FALSE, padding = 0, longtable = TRUE) %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 ```{r mksUp_genes_hm, fig.height = 24, cache=FALSE}
 plot_marker_heatmap(sln, gns=mks.up$gene_symbol, 
@@ -367,7 +368,7 @@ Ignoring ribosomal genes.
 ## get markers
 cm.up <- scran::findMarkers(sln,
     block=sln$Sample, group = sln$population, direction = "up")
-mks.up <- scABC2::extract_markers(sln, 
+mks.up <- extract_markers(sln, 
     marker_search_result = cm.up, FDR_thresh = 0.05,
     rank_thresh = 50)
 mks.up <- mks.up[ !grepl("^Rp[ls]", gene_symbol)] # removing ribosomal genes
