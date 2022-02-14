@@ -59,6 +59,7 @@ express_cols <-  c("grey85","tan1","tomato1","tomato2","firebrick3","firebrick4"
 
 ```{r load_tcr_data}
 fls <- fread("data/data_links.txt", header=TRUE)
+# you can also just download the RDS object directly from the link(s) in that file and read them in via readRDS()
 tcrCells <- load_RDSdata_from_Box(fls[File_name=="tcr_perCell_pairedSamples_newCID_2021-05.rds"]$Direct_link)
 
 ## FILTERING =================================================================
@@ -500,7 +501,7 @@ pl <- lapply(unique(clono_per_pop$Mouse), function(x){
         ggtitle(x) + ylab("fraction of cells per population") + xlab("")
     return(P)
 })
-ABCutilities::MultiPlotList(pl, cols = 7)
+ABCutilities::MultiPlotList(pl, cols = 7) ## just use the patchwork library instead with pl[[1]] + pl[[2]] etc.
 ```
 
 Here are the absolute counts instead of the frequencies:
@@ -536,7 +537,7 @@ pl <- lapply(unique(clono_per_pop$Mouse), function(x){
         ggtitle(x) + ylab("number of cells per population") + xlab("")
     return(P)
 })
-ABCutilities::MultiPlotList(pl, cols = 7)
+ABCutilities::MultiPlotList(pl, cols = 7)  ## just use the patchwork library instead with pl[[1]] + pl[[2]] etc.
 ```
 
 # SessionInfo
