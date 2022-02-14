@@ -33,7 +33,7 @@ The SingleCellExperiment object and all other Robjects needed to recreate this d
 
 ```{r load_SCE, echo=TRUE, message=TRUE}
 fls <- fread("data/data_links.txt", header=TRUE)
-sln <- load_RDSdata_from_Box(shared_link = fls[object == "SCE"]$link)
+sln <-  fls[File_name == "sce_integrated_pLNSamples_filtered.rds"]$Direct_link
 sln
 ```
 ```{r define_colors}
