@@ -162,6 +162,7 @@ For the single-cell data, there are multiple data set types per sample:
 >The easiest way to get started is to use the processed data provided here.
 
 For the single-cell data, some of the data can be downloaded from Box in the form of RDS (load into R via `in_data <- readRDS()`) or RDA objects (load into R via `load()`).
+For the direct links to the RDS/RDA objects, see [`scRNAseq/data/data_links.txt`](https://github.com/abcwcm/GeartySchietinger/blob/master/scRNAseq/data/data_links.txt).
 The `data/` directory in the scRNA-seq directory contains some text files that contain just the cell labels and the mouse labels for individual cells.
 
 | File_name |	Robject_type	| Details |
