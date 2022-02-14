@@ -1,8 +1,8 @@
 File_name	Direct_link	Robject_type	Details
-sce_integrated_pLNSamples_filtered.rds	https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds	RDS	"SingleCellExperiment object with logcounts, reduced dimensionality coordinates, labels and so on for the integrated pLN data set that is the basis for most of the scRNA-seq figures in Gearty et al"
+sce_integrated_pLNSamples_filtered.rds	https://wcm.box.com/shared/static/2wvbdfs3vja2cnlckcqpk20eu1693o8o.rds	RDS	"SingleCellExperiment object with counts, logcounts, reduced dimensionality coordinates, labels and so on for the integrated pLN data set that is the basis for most of the scRNA-seq figures in Gearty et al"
 GOenrich_BP_pLNmarkers.rda	https://wcm.box.com/shared/static/8k2cudvwqxw05iyywz8d36oof2qavjb8.rda	RDA	Result of clusterProfiler goEnrich on marker genes of pLN populations with GO terms biological processes
 GOenrich_MF_pLNmarkers.rda	https://wcm.box.com/shared/static/3zstp6yohqvrc31t26tzs8ox5pr5ukm6.rda	RDA	Result of clusterProfiler goEnrich on marker genes of pLN populations with GO terms molecular functions
 tcr_perCell_pairedSamples_newCID_2021-05.rds	https://wcm.box.com/shared/static/5wj8h9qssai2u0ya2sre2tsudahvvoni.rds	RDS	"clonotype IDs and labels for cells that were found in pLN as well as pancreas samples from the same mice (""paired"")"
 tscan_lineData_DiffMap.rda	https://wcm.box.com/shared/static/rakg00duv7j5v18e9jw2jq93px187l3h.rda	RDA	TSCAN results
-sce_integrated_with_YaoProgsMpecs-and-Schauder.rds	https://wcm.box.com/shared/static/ixtkzzow5b4r2ck3u6zit2jtep7dunzv.rds	RDS	SingleCellExperiment object with logcounts and labels following the integration of Gearty's pLN data as well as MPECs and ProgLikes from Yao et al (2019) and d129-Tcm from Schauder et al (2021)
+sce_integrated_with_YaoProgsMpecs-and-Schauder.rds	https://wcm.box.com/shared/static/ixtkzzow5b4r2ck3u6zit2jtep7dunzv.rds	RDS	SingleCellExperiment object with counts and logcounts and labels following the integration of Gearty's pLN data as well as MPECs and ProgLikes from Yao et al (2019) and d129-Tcm from Schauder et al (2021)
 
