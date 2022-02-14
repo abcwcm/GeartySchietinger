@@ -59,7 +59,7 @@ express_cols <-  c("grey85","tan1","tomato1","tomato2","firebrick3","firebrick4"
 
 ```{r load_tcr_data}
 fls <- fread("data/data_links.txt", header=TRUE)
-tcrCells <- load_RDSdata_from_Box(fls[object=="vdj"]$link)
+tcrCells <- load_RDSdata_from_Box(fls[File_name=="tcr_perCell_pairedSamples_newCID_2021-05.rds"]$Direct_link)
 
 ## FILTERING =================================================================
 ## keep those where we have info from the same mouse for both panc & pLN,
