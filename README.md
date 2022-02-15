@@ -8,6 +8,10 @@
 In Gearty et al. (2021) we describe CD8 T cell populations that contribute to the continuous destruction of pancreatic beta cells leading to type 1 diabetes.
 The data described here entails bulk RNA-seq samples of beta-cell-specific CD8 T cells from murine pancreatic lymph nodes (pLN) and pancreas as well as single-cell RNA-seq data coupled with antibody-derived tags (CITE-seq) and single-cell TCR sequencing.
 
+Here, we provide an overview of the data and scripts that we used for the paper. 
+
+**CONTENT**:
+
 * [Bulk RNA-seq](#bulk-rna-seq)
 * [Single-cell VDJ and CITE-seq data processing](#scvdj-and-scrna-seq-data-processing)
 * [Integration of public scRNA-seq data sets](#integration-with-public-scRNA-seq-data-sets)
